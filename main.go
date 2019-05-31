@@ -37,6 +37,17 @@ func main() {
 
 	isFirst := true
 
+	utcTime := time.Now().UTC().Format(time.RFC3339Nano)
+
+	fileName := "./log/" + utcTime + ".log"
+
+	file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer file.Close()
+
 	for {
 		tcpConn, err := listener.Accept()
 
@@ -51,18 +62,12 @@ func main() {
 		}
 		log.Printf("New SSH connection from %s (%s)", sshConn.RemoteAddr(), sshConn.ClientVersion())
 
-		utcTime := time.Now().UTC().Format(time.RFC3339)
-
-		dir := "./log/"
-
-		fileName := dir + sshConn.RemoteAddr().String() + "|" + string(sshConn.User()) + "|" + string(sshConn.ServerVersion()) + "|" + string(sshConn.ClientVersion()) + "|" + utcTime + ".log"
-
-		file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0666)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		defer file.Close()
+		fmt.Fprint(file, "RemoteAddr:"+sshConn.RemoteAddr().String()+"\n")
+		fmt.Fprint(file, "User:"+string(sshConn.User())+"\n")
+		fmt.Fprint(file, "ServerVersion:"+string(sshConn.ServerVersion())+"\n")
+		fmt.Fprint(file, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
+		fmt.Fprint(file, "Time:"+utcTime+"\n")
+		fmt.Fprint(file, "\n\n")
 
 		go ssh.DiscardRequests(reqs)
 
@@ -116,8 +121,6 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, isFirst bool) {
 	for {
 
 		writeTerminal(t, file, lineLabel)
-
-		// _, err = t.Write([]byte(lineLabel))
 
 		input, err := t.ReadLine()
 
