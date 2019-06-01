@@ -120,15 +120,16 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 		defer channel.Close()
 
 		for req := range requests {
-			switch req.Type {
-			case "shell":
+			if req.Type == "shell" {
 				fmt.Fprint(file, "RequestTyped:Shell"+"\r\n\n\n")
 				go handleShell(channel, req, file, user, isFirst)
-			case "exec":
+			} else if req.Type == "pty-req" {
+
+			} else if req.Type == "exec" {
 				fmt.Fprint(file, "RequestTyped:Exec"+"\r\n\n\n")
 				handleExec(channel, req, file, user)
 				return
-			default:
+			} else {
 				log.Print("Unknown ssh request type:", req.Type+"\r\n")
 			}
 		}
