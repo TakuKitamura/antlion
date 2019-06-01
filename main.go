@@ -78,7 +78,6 @@ func main() {
 		fmt.Fprint(file, "ServerVersion:"+string(sshConn.ServerVersion())+"\n")
 		fmt.Fprint(file, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
 		fmt.Fprint(file, "Time:"+utcTime+"\n")
-		// fmt.Fprint(file, "\n\n")
 
 		log.Print("New SSH connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\r\n")
 
@@ -104,6 +103,7 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 		errMsg := fmt.Sprintf("Unknown channel type: %s", channelType)
 		newChannel.Reject(ssh.UnknownChannelType, errMsg)
 		log.Print(errMsg + "\r\n")
+		return
 	}
 
 	channel, requests, err := newChannel.Accept()
@@ -111,6 +111,7 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 		errMsg := fmt.Sprintf("ConnectionFailed: because of %s", err.Error())
 		newChannel.Reject(ssh.ConnectionFailed, errMsg)
 		log.Print(errMsg + "\r\n")
+		return
 	}
 	defer channel.Close()
 
@@ -132,7 +133,7 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFi
 
 	oldState, err := terminal.MakeRaw(0)
 	if err != nil {
-		log.Print(err.Error() + "\r\n")
+		log.Print("Make Raw Failed:", err.Error()+"\r\n")
 		return
 	}
 	defer terminal.Restore(0, oldState)
@@ -175,7 +176,7 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFi
 func handleExec(c ssh.Channel, r *ssh.Request, file *os.File, user string) {
 	oldState, err := terminal.MakeRaw(0)
 	if err != nil {
-		log.Print(err.Error() + "\r\n")
+		log.Print("Make Raw Failed:", err.Error()+"\r\n")
 		return
 	}
 	defer terminal.Restore(0, oldState)
