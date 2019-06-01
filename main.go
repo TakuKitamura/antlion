@@ -124,7 +124,10 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 			fmt.Fprint(file, "RequestTyped:Exec"+"\r\n\n\n")
 			handleExec(channel, req, file, user)
 			return
+		default:
+			log.Print("Unknown ssh request type:", req.Type+"\r\n")
 		}
+
 	}
 
 }
