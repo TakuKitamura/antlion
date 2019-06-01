@@ -22,6 +22,7 @@ func main() {
 			password = string(pass)
 			return nil, nil
 		},
+		ServerVersion: "SSH-2.0-OpenSSH_7.2p2 Ubuntu-4",
 	}
 
 	privateKeyBytes, err := ioutil.ReadFile("id_rsa")
@@ -77,7 +78,7 @@ func main() {
 		fmt.Fprint(file, "ServerVersion:"+string(sshConn.ServerVersion())+"\n")
 		fmt.Fprint(file, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
 		fmt.Fprint(file, "Time:"+utcTime+"\n")
-		fmt.Fprint(file, "\n\n")
+		// fmt.Fprint(file, "\n\n")
 
 		log.Print("New SSH connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\r\n")
 
@@ -116,9 +117,11 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 	for req := range requests {
 		switch req.Type {
 		case "shell":
+			fmt.Fprint(file, "RequestTyped:Shell"+"\r\n\n\n")
 			go handleShell(channel, req, file, user, isFirst)
 		case "exec":
-			handleExec(channel, req, file)
+			fmt.Fprint(file, "RequestTyped:Exec"+"\r\n\n\n")
+			handleExec(channel, req, file, user)
 			return
 		}
 	}
@@ -168,7 +171,7 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFi
 	}
 }
 
-func handleExec(c ssh.Channel, r *ssh.Request, file *os.File) {
+func handleExec(c ssh.Channel, r *ssh.Request, file *os.File, user string) {
 	oldState, err := terminal.MakeRaw(0)
 	if err != nil {
 		log.Print(err.Error() + "\r\n")
@@ -177,7 +180,10 @@ func handleExec(c ssh.Channel, r *ssh.Request, file *os.File) {
 	defer terminal.Restore(0, oldState)
 	term := terminal.NewTerminal(c, "")
 
+	lineLabel := user + "@ubuntu:~$ "
+	term.SetPrompt(lineLabel + string(term.Escape.Reset))
+
 	fmt.Fprint(term, string(r.Payload)+"\r\n")
-	fmt.Fprint(file, string(r.Payload)+"\r\n")
+	fmt.Fprint(file, lineLabel+string(r.Payload)+"\r\n")
 	return
 }
