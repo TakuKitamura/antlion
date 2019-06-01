@@ -81,11 +81,7 @@ func main() {
 
 		log.Print("New SSH connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\r\n")
 
-		for req := range reqs {
-			fmt.Println(string(req.Payload))
-		}
-
-		// go ssh.DiscardRequests(reqs)
+		go ssh.DiscardRequests(reqs)
 
 		go handleChannels(chans, file, sshConn.User(), isFirst)
 
@@ -103,14 +99,14 @@ func handleChannels(chans <-chan ssh.NewChannel, file *os.File, user string, isF
 func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirst bool) {
 
 	channelType := newChannel.ChannelType()
-	log.Print("ChannelType:", channelType+"\r\n")
+	// log.Print("ChannelType:", channelType+"\r\n")
 
-	// if channelType != "session" {
-	// 	errMsg := fmt.Sprintf("Unknown channel type: %s", channelType)
-	// 	newChannel.Reject(ssh.UnknownChannelType, errMsg)
-	// 	log.Print(errMsg + "\r\n")
-	// 	return
-	// }
+	if channelType != "session" {
+		errMsg := fmt.Sprintf("Unknown channel type: %s", channelType)
+		newChannel.Reject(ssh.UnknownChannelType, errMsg)
+		log.Print(errMsg + "\r\n")
+		return
+	}
 
 	channel, requests, err := newChannel.Accept()
 	if err != nil {
