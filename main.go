@@ -53,13 +53,13 @@ func main() {
 
 		file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0666)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("Failed open file:", err)
 		}
 		defer file.Close()
 
 		tcpConn, err := listener.Accept()
 		if err != nil {
-			log.Print(err)
+			log.Print("Listener accept failed:", err)
 			continue
 		}
 		defer tcpConn.Close()
@@ -67,7 +67,7 @@ func main() {
 		sshConn, chans, reqs, err := ssh.NewServerConn(tcpConn, serverConfig)
 
 		if err != nil {
-			log.Print(err)
+			log.Print("New server connect failed:", err)
 			continue
 		}
 		defer sshConn.Close()
@@ -153,10 +153,11 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFi
 		line, err := term.ReadLine()
 		if err == io.EOF {
 			c.Close()
+			log.Print("Read EOF:", err.Error()+"\r\n")
 			return
 		}
 		if err != nil {
-			log.Print(err.Error() + "\r\n")
+			log.Print("Read Line Failed:", err.Error()+"\r\n")
 			c.Close()
 			return
 		}
