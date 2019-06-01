@@ -99,37 +99,44 @@ func handleChannels(chans <-chan ssh.NewChannel, file *os.File, user string, isF
 func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirst bool) {
 
 	channelType := newChannel.ChannelType()
-	// log.Print("ChannelType:", channelType+"\r\n")
+	fmt.Fprint(file, "ChannelType:"+channelType+"\n")
 
-	if channelType != "session" {
+	switch channelType {
+	case "direct-tcpip":
+		extraData := newChannel.ExtraData()
+		fmt.Fprint(file, "ExtraData:"+string(extraData)+"\n")
+		errMsg := fmt.Sprintf("forbidden channel type: %s", channelType)
+		newChannel.Reject(ssh.UnknownChannelType, errMsg)
+		return
+	case "session":
+		channel, requests, err := newChannel.Accept()
+		if err != nil {
+			errMsg := fmt.Sprintf("ConnectionFailed: because of %s", err.Error())
+			newChannel.Reject(ssh.ConnectionFailed, errMsg)
+			log.Print(errMsg + "\r\n")
+			return
+		}
+
+		defer channel.Close()
+
+		for req := range requests {
+			switch req.Type {
+			case "shell":
+				fmt.Fprint(file, "RequestTyped:Shell"+"\r\n\n\n")
+				go handleShell(channel, req, file, user, isFirst)
+			case "exec":
+				fmt.Fprint(file, "RequestTyped:Exec"+"\r\n\n\n")
+				handleExec(channel, req, file, user)
+				return
+			default:
+				log.Print("Unknown ssh request type:", req.Type+"\r\n")
+			}
+		}
+	default:
 		errMsg := fmt.Sprintf("Unknown channel type: %s", channelType)
 		newChannel.Reject(ssh.UnknownChannelType, errMsg)
 		log.Print(errMsg + "\r\n")
 		return
-	}
-
-	channel, requests, err := newChannel.Accept()
-	if err != nil {
-		errMsg := fmt.Sprintf("ConnectionFailed: because of %s", err.Error())
-		newChannel.Reject(ssh.ConnectionFailed, errMsg)
-		log.Print(errMsg + "\r\n")
-		return
-	}
-	defer channel.Close()
-
-	for req := range requests {
-		switch req.Type {
-		case "shell":
-			fmt.Fprint(file, "RequestTyped:Shell"+"\r\n\n\n")
-			go handleShell(channel, req, file, user, isFirst)
-		case "exec":
-			fmt.Fprint(file, "RequestTyped:Exec"+"\r\n\n\n")
-			handleExec(channel, req, file, user)
-			return
-		default:
-			log.Print("Unknown ssh request type:", req.Type+"\r\n")
-		}
-
 	}
 
 }
@@ -159,7 +166,7 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFi
 		line, err := term.ReadLine()
 		if err == io.EOF {
 			c.Close()
-			log.Print("Read EOF:", err.Error()+"\r\n")
+			log.Print("Read EOF" + "\r\n")
 			return
 		}
 		if err != nil {
