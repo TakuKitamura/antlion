@@ -98,13 +98,13 @@ func handleChannels(chans <-chan ssh.NewChannel, file *os.File, user string, isF
 
 func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirst bool) {
 
-	channelType := newChannel.ChannelType()
-	if channelType != "session" {
-		errMsg := fmt.Sprintf("Unknown channel type: %s", channelType)
-		newChannel.Reject(ssh.UnknownChannelType, errMsg)
-		log.Print(errMsg + "\r\n")
-		return
-	}
+	// channelType := newChannel.ChannelType()
+	// if channelType != "session" {
+	// 	errMsg := fmt.Sprintf("Unknown channel type: %s", channelType)
+	// 	newChannel.Reject(ssh.UnknownChannelType, errMsg)
+	// 	log.Print(errMsg + "\r\n")
+	// 	return
+	// }
 
 	channel, requests, err := newChannel.Accept()
 	if err != nil {
