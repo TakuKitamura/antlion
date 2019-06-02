@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net"
 	"os"
 	"time"
+	"unicode"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
@@ -50,16 +52,6 @@ func main() {
 
 		isFirst := true
 
-		utcTime := time.Now().UTC().Format(time.RFC3339Nano)
-
-		fileName := "./log/" + utcTime + ".log"
-
-		file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0666)
-		if err != nil {
-			log.Fatal("Failed open file:", err)
-		}
-		defer file.Close()
-
 		tcpConn, err := listener.Accept()
 		if err != nil {
 			log.Println("Listener accept failed:", err)
@@ -87,6 +79,16 @@ func main() {
 				defer sshConn.Close()
 
 				tcpTimeout <- "TCP No Timeout"
+
+				utcTime := time.Now().UTC().Format(time.RFC3339Nano)
+
+				fileName := "./log/" + utcTime + ".log"
+
+				file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0666)
+				if err != nil {
+					log.Fatal("Failed open file:", err)
+				}
+				defer file.Close()
 
 				fmt.Fprint(file, "RemoteAddr:"+sshConn.RemoteAddr().String()+"\n")
 				fmt.Fprint(file, "User:"+string(sshConn.User())+"\n")
@@ -258,17 +260,66 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFi
 			fmt.Fprint(file, lineLabel+line+"\r\n")
 			continue
 		}
-		fmt.Fprint(term, line+"\r\n")
-		fmt.Fprint(file, lineLabel+line+"\r\n"+line+"\r\n")
+
+		emulateCommand([]byte(line), lineLabel, term, file)
+
 	}
+}
+
+func emulateCommand(v []byte, lineLabel string, term *terminal.Terminal, file *os.File) error {
+	v = bytes.TrimFunc(v, unicode.IsControl)
+	splitPayload := bytes.Split(v, []byte{32})
+
+	commandName := ""
+	commandArgs := []string{}
+	for _, v := range splitPayload {
+		if len(v) != 0 {
+			if len(commandName) == 0 {
+				commandName = string(v)
+			} else {
+				commandArgs = append(commandArgs, string(v))
+			}
+		}
+	}
+	command := commandName + " "
+
+	for _, v := range commandArgs {
+		command += v
+	}
+
+	if commandName == "uname" {
+		if len(commandArgs) > 0 {
+			if commandArgs[0] == "-a" {
+				msg := "Linux ubuntu 4.4.0-127-generic #153-Ubuntu SMP Sat May 19 10:58:46 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux\r\n"
+				fmt.Fprint(term, msg)
+				fmt.Fprint(file, lineLabel+command+"\r\n")
+				fmt.Fprint(file, msg)
+			}
+		} else {
+			msg := "Linux\r\n"
+			fmt.Fprint(term, msg)
+			fmt.Fprint(file, lineLabel+command+"\r\n")
+			fmt.Fprint(file, msg)
+		}
+	} else {
+		fmt.Fprint(term, command+"\r\n")
+		fmt.Fprint(file, lineLabel+command+"\r\n")
+		fmt.Fprint(file, command)
+	}
+
+	return nil
+}
+
+func commandsFunc(lineLabel string, commandName string, commandArgs []string, term *terminal.Terminal, file *os.File) {
+
 }
 
 func handleExec(c ssh.Channel, r *ssh.Request, file *os.File, user string) {
 	term := terminal.NewTerminal(c, "")
 
 	lineLabel := user + "@ubuntu:~$ "
+
 	term.SetPrompt(lineLabel + string(term.Escape.Reset))
 
-	fmt.Fprint(term, string(r.Payload)+"\r\n")
-	fmt.Fprint(file, lineLabel+string(r.Payload)+"\r\n")
+	emulateCommand(r.Payload, lineLabel, term, file)
 }
