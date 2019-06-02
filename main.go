@@ -144,12 +144,12 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 
 func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFirst bool) {
 
-	oldState, err := terminal.MakeRaw(0)
-	if err != nil {
-		log.Print("Make Raw Failed:", err.Error()+"\r\n")
-		return
-	}
-	defer terminal.Restore(0, oldState)
+	// oldState, err := terminal.MakeRaw(0)
+	// if err != nil {
+	// 	log.Print("Make Raw Failed:", err.Error()+"\r\n")
+	// 	return
+	// }
+	// defer terminal.Restore(0, oldState)
 
 	term := terminal.NewTerminal(c, "")
 	lineLabel := user + "@ubuntu:~$ "
@@ -187,12 +187,12 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFi
 }
 
 func handleExec(c ssh.Channel, r *ssh.Request, file *os.File, user string) {
-	oldState, err := terminal.MakeRaw(0)
-	if err != nil {
-		log.Print("Make Raw Failed:", err.Error()+"\r\n")
-		return
-	}
-	defer terminal.Restore(0, oldState)
+	// oldState, err := terminal.MakeRaw(0)
+	// if err != nil {
+	// 	log.Print("Make Raw Failed:", err.Error()+"\r\n")
+	// 	return
+	// }
+	// defer terminal.Restore(0, oldState)
 	term := terminal.NewTerminal(c, "")
 
 	lineLabel := user + "@ubuntu:~$ "
