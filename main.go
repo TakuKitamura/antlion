@@ -105,15 +105,22 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 	case "direct-tcpip":
 		extraData := newChannel.ExtraData()
 		fmt.Fprint(file, "ExtraData:"+string(extraData)+"\n")
-		errMsg := fmt.Sprintf("forbidden channel type: %s", channelType)
-		newChannel.Reject(ssh.UnknownChannelType, errMsg)
+		errMsg := fmt.Sprintf("Forbidden channel type: %s", channelType)
+		log.Print(errMsg + "\r\n")
+		err := newChannel.Reject(ssh.UnknownChannelType, errMsg)
+		if err != nil {
+			log.Print("Reject Failed:", err.Error()+"\r\n")
+		}
 		return
 	case "session":
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
 			errMsg := fmt.Sprintf("ConnectionFailed: because of %s", err.Error())
-			newChannel.Reject(ssh.ConnectionFailed, errMsg)
 			log.Print(errMsg + "\r\n")
+			err := newChannel.Reject(ssh.ConnectionFailed, errMsg)
+			if err != nil {
+				log.Print("Reject Failed:", err.Error()+"\r\n")
+			}
 			return
 		}
 
@@ -123,11 +130,16 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 			if req.Type == "shell" {
 				fmt.Fprint(file, "RequestTyped:Shell"+"\r\n\n\n")
 				go handleShell(channel, req, file, user, isFirst)
+
 			} else if req.Type == "pty-req" {
 
 			} else if req.Type == "exec" {
 				fmt.Fprint(file, "RequestTyped:Exec"+"\r\n\n\n")
 				handleExec(channel, req, file, user)
+				err := channel.Close()
+				if err != nil {
+					log.Print("Channel Close Failed:", err.Error()+"\r\n")
+				}
 				return
 			} else {
 				log.Print("Unknown ssh request type:", req.Type+"\r\n")
