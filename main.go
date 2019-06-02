@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -41,9 +42,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to listen on 22 (%s)", err)
 	}
-	log.Print("Listening on 22...")
+	log.Print("Listening on 22 PORT")
 
 	for {
+
+		timeoutSec := 10
 
 		isFirst := true
 
@@ -59,44 +62,99 @@ func main() {
 
 		tcpConn, err := listener.Accept()
 		if err != nil {
-			log.Print("Listener accept failed:", err)
+			log.Println("Listener accept failed:", err)
 			continue
 		}
 		defer tcpConn.Close()
 
-		sshConn, chans, reqs, err := ssh.NewServerConn(tcpConn, serverConfig)
+		go func() {
 
-		if err != nil {
-			log.Print("New server connect failed:", err)
-			continue
-		}
-		defer sshConn.Close()
+			tcpTimeout := make(chan string, 1)
 
-		fmt.Fprint(file, "RemoteAddr:"+sshConn.RemoteAddr().String()+"\n")
-		fmt.Fprint(file, "User:"+string(sshConn.User())+"\n")
-		fmt.Fprint(file, "Password:"+password+"\n")
-		fmt.Fprint(file, "ServerVersion:"+string(sshConn.ServerVersion())+"\n")
-		fmt.Fprint(file, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
-		fmt.Fprint(file, "Time:"+utcTime+"\n")
+			go func() {
 
-		log.Print("New SSH connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\r\n")
+				sshTimeout := make(chan string, 1)
 
-		go ssh.DiscardRequests(reqs)
+				sshConn, channels, requests, err := ssh.NewServerConn(tcpConn, serverConfig)
+				if err != nil {
+					log.Println("New server connect failed:", err)
+					err = tcpConn.Close()
+					if err != nil {
+						log.Println(err)
+					}
+					return
+				}
+				defer sshConn.Close()
 
-		go handleChannels(chans, file, sshConn.User(), isFirst)
+				tcpTimeout <- "TCP No Timeout"
 
-		isFirst = false
+				fmt.Fprint(file, "RemoteAddr:"+sshConn.RemoteAddr().String()+"\n")
+				fmt.Fprint(file, "User:"+string(sshConn.User())+"\n")
+				fmt.Fprint(file, "Password:"+password+"\n")
+				fmt.Fprint(file, "ServerVersion:"+string(sshConn.ServerVersion())+"\n")
+				fmt.Fprint(file, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
+				fmt.Fprint(file, "Time:"+utcTime+"\n")
+
+				log.Print("New SSH connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\r\n")
+
+				go ssh.DiscardRequests(requests)
+
+				go func() {
+					for newChannel := range channels {
+						err := handleChannel(newChannel, file, sshConn.User(), isFirst)
+						if err != nil {
+							log.Print("HandleChannel Error :", err)
+							err = sshConn.Close()
+							if err != nil {
+								log.Println(err)
+							}
+							err = tcpConn.Close()
+							if err != nil {
+								log.Println(err)
+							}
+							return
+						}
+					}
+
+					isFirst = false
+
+					sshTimeout <- "SSH No Timeout"
+
+				}()
+
+				select {
+				case <-sshTimeout:
+				case <-time.After(time.Duration(timeoutSec) * time.Second):
+					err = sshConn.Close()
+					if err != nil {
+						log.Println(err)
+					}
+					err = tcpConn.Close()
+					if err != nil {
+						log.Println(err)
+					}
+					return
+				}
+
+			}()
+
+			select {
+			case <-tcpTimeout:
+			case <-time.After(time.Duration(timeoutSec) * time.Second):
+				tcpConn.Close()
+				err := tcpConn.Close()
+				if err != nil {
+					log.Println(err)
+				}
+				return
+			}
+
+		}()
 
 	}
 }
 
-func handleChannels(chans <-chan ssh.NewChannel, file *os.File, user string, isFirst bool) {
-	for newChannel := range chans {
-		go handleChannel(newChannel, file, user, isFirst)
-	}
-}
-
-func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirst bool) {
+func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirst bool) error {
 
 	channelType := newChannel.ChannelType()
 	fmt.Fprint(file, "ChannelType:"+channelType+"\n")
@@ -110,8 +168,9 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 		err := newChannel.Reject(ssh.UnknownChannelType, errMsg)
 		if err != nil {
 			log.Print("Reject Failed:", err.Error()+"\r\n")
+			return err
 		}
-		return
+		return nil
 	case "session":
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
@@ -120,8 +179,9 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 			err := newChannel.Reject(ssh.ConnectionFailed, errMsg)
 			if err != nil {
 				log.Print("Reject Failed:", err.Error()+"\r\n")
+				return err
 			}
-			return
+			return nil
 		}
 
 		defer channel.Close()
@@ -129,7 +189,15 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 		for req := range requests {
 			if req.Type == "shell" {
 				fmt.Fprint(file, "RequestTyped:Shell"+"\r\n\n\n")
-				go handleShell(channel, req, file, user, isFirst)
+
+				err := handleShell(channel, req, file, user, isFirst)
+
+				if err != nil {
+					log.Print("Handle Shell Error:", err.Error()+"\r\n")
+					return err
+				}
+
+				return nil
 
 			} else if req.Type == "pty-req" {
 
@@ -139,29 +207,29 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 				err := channel.Close()
 				if err != nil {
 					log.Print("Channel Close Failed:", err.Error()+"\r\n")
+					return err
 				}
-				return
+				return nil
 			} else {
 				log.Print("Unknown ssh request type:", req.Type+"\r\n")
 			}
 		}
 	default:
 		errMsg := fmt.Sprintf("Unknown channel type: %s", channelType)
-		newChannel.Reject(ssh.UnknownChannelType, errMsg)
 		log.Print(errMsg + "\r\n")
-		return
+		err := newChannel.Reject(ssh.UnknownChannelType, errMsg)
+		if err != nil {
+			log.Print("Reject Failed:", err.Error()+"\r\n")
+			return err
+		}
+		return errors.New(errMsg)
 	}
 
+	errMsg := "Unknown ChannelType"
+	return errors.New(errMsg)
 }
 
-func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFirst bool) {
-
-	// oldState, err := terminal.MakeRaw(0)
-	// if err != nil {
-	// 	log.Print("Make Raw Failed:", err.Error()+"\r\n")
-	// 	return
-	// }
-	// defer terminal.Restore(0, oldState)
+func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFirst bool) error {
 
 	term := terminal.NewTerminal(c, "")
 	lineLabel := user + "@ubuntu:~$ "
@@ -178,14 +246,12 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFi
 	for {
 		line, err := term.ReadLine()
 		if err == io.EOF {
-			c.Close()
-			log.Print("Read EOF" + "\r\n")
-			return
+			log.Print("Read EOF", "\r\n")
+			return nil
 		}
 		if err != nil {
 			log.Print("Read Line Failed:", err.Error()+"\r\n")
-			c.Close()
-			return
+			return err
 		}
 		if line == "" {
 			fmt.Fprint(term, line)
@@ -194,17 +260,10 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFi
 		}
 		fmt.Fprint(term, line+"\r\n")
 		fmt.Fprint(file, lineLabel+line+"\r\n"+line+"\r\n")
-
 	}
 }
 
 func handleExec(c ssh.Channel, r *ssh.Request, file *os.File, user string) {
-	// oldState, err := terminal.MakeRaw(0)
-	// if err != nil {
-	// 	log.Print("Make Raw Failed:", err.Error()+"\r\n")
-	// 	return
-	// }
-	// defer terminal.Restore(0, oldState)
 	term := terminal.NewTerminal(c, "")
 
 	lineLabel := user + "@ubuntu:~$ "
@@ -212,5 +271,4 @@ func handleExec(c ssh.Channel, r *ssh.Request, file *os.File, user string) {
 
 	fmt.Fprint(term, string(r.Payload)+"\r\n")
 	fmt.Fprint(file, lineLabel+string(r.Payload)+"\r\n")
-	return
 }
