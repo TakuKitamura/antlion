@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"time"
@@ -14,6 +15,15 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
+)
+
+const (
+	Ubuntu      = "Ubuntu"
+	KaliLinux   = "KaliLinux"
+	RaspberryPi = "RaspberryPi"
+	AmazonLinux = "AmazonLinux"
+	CentOS      = "CentOS"
+	Debian      = "Debian"
 )
 
 func main() {
@@ -188,11 +198,19 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 
 		defer channel.Close()
 
+		osVersions := []string{Ubuntu, KaliLinux, RaspberryPi, AmazonLinux, CentOS, Debian}
+
+		rand.Seed(time.Now().UnixNano())
+
+		os := osVersions[rand.Intn(len(osVersions))]
+
+		fmt.Fprint(file, "OS:"+os+"\n")
+
 		for req := range requests {
 			if req.Type == "shell" {
 				fmt.Fprint(file, "RequestTyped:Shell"+"\r\n\n\n")
 
-				err := handleShell(channel, req, file, user, isFirst)
+				err := handleShell(channel, req, file, user, os, isFirst)
 
 				if err != nil {
 					log.Print("Handle Shell Error:", err.Error()+"\r\n")
@@ -205,8 +223,14 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 
 			} else if req.Type == "exec" {
 				fmt.Fprint(file, "RequestTyped:Exec"+"\r\n\n\n")
-				handleExec(channel, req, file, user)
-				err := channel.Close()
+				err := handleExec(channel, req, file, user, os)
+
+				if err != nil {
+					log.Print("Handle Exec Error:", err.Error()+"\r\n")
+					return err
+				}
+
+				err = channel.Close()
 				if err != nil {
 					log.Print("Channel Close Failed:", err.Error()+"\r\n")
 					return err
@@ -231,15 +255,40 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 	return errors.New(errMsg)
 }
 
-func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFirst bool) error {
+func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, os string, isFirst bool) error {
 
 	term := terminal.NewTerminal(c, "")
-	lineLabel := user + "@ubuntu:~$ "
+	lineLabel := user + "@" + os + ":~$ "
 
 	term.SetPrompt(lineLabel + string(term.Escape.Reset))
 
 	if isFirst == true {
-		terminalHeader := "Welcome to Ubuntu 16.04.3 LTS (GNU/Linux 4.4.0-112-generic x86_64)\n\n * Documentation:  https://help.ubuntu.com\n * Management:     https://landscape.canonical.com\n * Support:        https://ubuntu.com/advantage\n\nLast login: Thu Feb  1 13:51:02 2018 from 93.184.216.34\n"
+
+		var terminalHeader string
+
+		if os == Ubuntu {
+			// Ubuntu
+			terminalHeader = "Linux ubuntu 2.6.20-16-generic #2 SMP Thu Jun 7 19:00:28 UTC 2007 x86_64\n\nThe programs included with the Ubuntu system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nUbuntu comes with ABSOLUTELY NO WARRANTY, to the extent permitted by applicable law.\n\nLast login: Mon Aug 13 01:05:46 2007 from 93.184.216.34\n"
+		} else if os == KaliLinux {
+			// KaliLinux
+			terminalHeader = "Linux kali 4.14.71-v8 #1 SMP PREEMPT Wed Oct 31 21:41:06 UTC 2018 aarch64\n\nThe programs included with the Kali GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nKali GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\nLast login: Thu Feb  1 13:51:02 2018 from 93.184.216.34\n"
+		} else if os == AmazonLinux {
+			// AmazonLinux
+			terminalHeader = "Last login: Sat Jun  1 09:34:32 2019 from 93.184.216.34\n\n__|  __|_  )\n_|  (     /   Amazon Linux 2 AMI\n___|\\___|___\n\nhttps://aws.amazon.com/amazon-linux-2/\n5 package(s) needed for security, out of 7 available\nRun \"sudo yum update\" to apply all updates.\n"
+		} else if os == RaspberryPi {
+			// RaspberryPi
+			terminalHeader = "Linux rasPi 4.9.41-v7+ #1023 SMP Tue Aug 8 16:00:15 BST 2017 armv7l\n\nThe programs included with the Debian GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nDebian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\nLast login: Wed Oct 11 18:54:03 2017 from 93.184.216.34\n"
+		} else if os == Debian {
+			// Debian
+			terminalHeader = "Linux debian 3.6.5-x86_64 #1 SMP Sun Nov 4 12:40:43 EST 2012 x86_64\n\nThe programs included with the Debian GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nDebian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\nLast login: Sat Dec 22 13:38:52 2012 from 93.184.216.34\n"
+		} else if os == CentOS {
+			// CentOS
+			terminalHeader = "Last login: Thu Feb  1 13:51:02 2018 from 93.184.216.34\n"
+		} else {
+			errMsg := "Unknown OS: " + os + "\r\n"
+			log.Print(errMsg)
+			return errors.New(errMsg)
+		}
 
 		fmt.Fprint(term, terminalHeader)
 		fmt.Fprint(file, terminalHeader)
@@ -261,12 +310,16 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, isFi
 			continue
 		}
 
-		emulateCommand([]byte(line), lineLabel, term, file)
+		err = emulateCommand([]byte(line), lineLabel, os, term, file)
+		if err != nil {
+			log.Print(err.Error() + "\r\n")
+			return err
+		}
 
 	}
 }
 
-func emulateCommand(v []byte, lineLabel string, term *terminal.Terminal, file *os.File) error {
+func emulateCommand(v []byte, lineLabel string, os string, term *terminal.Terminal, file *os.File) error {
 	v = bytes.TrimFunc(v, unicode.IsControl)
 	splitPayload := bytes.Split(v, []byte{32})
 
@@ -287,39 +340,62 @@ func emulateCommand(v []byte, lineLabel string, term *terminal.Terminal, file *o
 		command += v
 	}
 
+	msg := command
+	fmt.Fprint(file, lineLabel+command+"\r\n")
 	if commandName == "uname" {
 		if len(commandArgs) > 0 {
 			if commandArgs[0] == "-a" {
-				msg := "Linux ubuntu 4.4.0-127-generic #153-Ubuntu SMP Sat May 19 10:58:46 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux\r\n"
+				if os == Ubuntu {
+					// Ubuntu
+					msg = "Linux ubuntu 4.10.0-35-generic #39~16.04.1-Ubuntu SMP Wed Sep 13 09:02:42 UTC 2017 x86_64 GNU/Linux\r\n"
+				} else if os == KaliLinux {
+					// KaliLinux
+					msg = "Linux kali 4.14.71-v8 #1 SMP PREEMPT Wed Oct 31 21:41:06 UTC 2018 aarch64 GNU/Linux\r\n"
+				} else if os == AmazonLinux {
+					// AmazonLinux
+					msg = "Linux ip-170-31-81-10.ec2.internal 4.10.109-90.92.amzn2.x86_64 #1 SMP Mon Apr 1 23:00:38 UTC 2019 x86_64 x86_64 x86_64 GNU/Linux\r\n"
+				} else if os == RaspberryPi {
+					// RaspberryPi
+					msg = "Linux raspberrypi 3.18.11-v7+ #781 SMP PREEMPT Tue Apr 21 18:07:59 BST 2015 armv7l GNU/Linux\r\n"
+				} else if os == Debian {
+					// Debian
+					msg = "Linux debian 3.2.0-4-amd64 #1 SMP Debian 3.2.65-1+deb7u2 x86_64 GNU/Linux\r\n"
+				} else if os == CentOS {
+					// CentOS
+					msg = "Linux cent 3.10.0-327.28.2.el7.x86_64 #1 SMP Wed Aug 3 11:11:39 UTC 2016 x86_64 x86_64 x86_64 GNU/Linux\r\n"
+				} else {
+					errMsg := "Unknown OS: " + os + "\r\n"
+					log.Print(errMsg)
+					return errors.New(errMsg)
+				}
+
 				fmt.Fprint(term, msg)
-				fmt.Fprint(file, lineLabel+command+"\r\n")
 				fmt.Fprint(file, msg)
 			}
 		} else {
-			msg := "Linux\r\n"
+			msg = "Linux\r\n"
 			fmt.Fprint(term, msg)
-			fmt.Fprint(file, lineLabel+command+"\r\n")
 			fmt.Fprint(file, msg)
 		}
 	} else {
-		fmt.Fprint(term, command+"\r\n")
-		fmt.Fprint(file, lineLabel+command+"\r\n")
-		fmt.Fprint(file, command)
+		fmt.Fprint(term, msg+"\r\n")
+		fmt.Fprint(file, msg)
 	}
 
 	return nil
 }
 
-func commandsFunc(lineLabel string, commandName string, commandArgs []string, term *terminal.Terminal, file *os.File) {
-
-}
-
-func handleExec(c ssh.Channel, r *ssh.Request, file *os.File, user string) {
+func handleExec(c ssh.Channel, r *ssh.Request, file *os.File, user string, os string) error {
 	term := terminal.NewTerminal(c, "")
 
-	lineLabel := user + "@ubuntu:~$ "
+	lineLabel := user + "@" + os + ":~$ "
 
 	term.SetPrompt(lineLabel + string(term.Escape.Reset))
 
-	emulateCommand(r.Payload, lineLabel, term, file)
+	err := emulateCommand(r.Payload, lineLabel, os, term, file)
+	if err != nil {
+		log.Print(err.Error() + "\r\n")
+		return err
+	}
+	return nil
 }

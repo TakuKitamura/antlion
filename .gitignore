@@ -1,4 +1,8 @@
+# Env
 id_rsa
 id_rsa.pub
 log
 history
+
+# Meta
+.DS_Store
