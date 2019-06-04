@@ -39,6 +39,9 @@ func main() {
 	}
 
 	serverConfig.Ciphers = []string{
+		"aes128-cbc",
+		"blowfish-cbc",
+		"3des-cbc",
 		"aes128-gcm@openssh.com",
 		"chacha20-poly1305@openssh.com",
 		"aes128-ctr",
