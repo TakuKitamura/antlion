@@ -38,6 +38,14 @@ func main() {
 		ServerVersion: "SSH-2.0-OpenSSH_7.2p2 Ubuntu-4",
 	}
 
+	serverConfig.Ciphers = []string{
+		"aes128-gcm@openssh.com",
+		"chacha20-poly1305@openssh.com",
+		"aes128-ctr",
+		"aes192-ctr",
+		"aes256-ctr",
+	}
+
 	privateKeyBytes, err := ioutil.ReadFile("id_rsa")
 	if err != nil {
 		log.Fatal("Failed to load private key (./id_rsa)")
