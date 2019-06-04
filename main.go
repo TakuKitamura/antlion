@@ -107,7 +107,7 @@ func main() {
 				fmt.Fprint(file, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
 				fmt.Fprint(file, "Time:"+utcTime+"\n")
 
-				log.Print("New SSH connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\r\n")
+				log.Print("New SSH connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\n")
 
 				go ssh.DiscardRequests(requests)
 
@@ -176,10 +176,10 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 		extraData := newChannel.ExtraData()
 		fmt.Fprint(file, "ExtraData:"+string(extraData)+"\n")
 		errMsg := fmt.Sprintf("Forbidden channel type: %s", channelType)
-		log.Print(errMsg + "\r\n")
+		log.Print(errMsg + "\n")
 		err := newChannel.Reject(ssh.UnknownChannelType, errMsg)
 		if err != nil {
-			log.Print("Reject Failed:", err.Error()+"\r\n")
+			log.Print("Reject Failed:", err.Error()+"\n")
 			return err
 		}
 		return nil
@@ -187,10 +187,10 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
 			errMsg := fmt.Sprintf("ConnectionFailed: because of %s", err.Error())
-			log.Print(errMsg + "\r\n")
+			log.Print(errMsg + "\n")
 			err := newChannel.Reject(ssh.ConnectionFailed, errMsg)
 			if err != nil {
-				log.Print("Reject Failed:", err.Error()+"\r\n")
+				log.Print("Reject Failed:", err.Error()+"\n")
 				return err
 			}
 			return nil
@@ -208,12 +208,12 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 
 		for req := range requests {
 			if req.Type == "shell" {
-				fmt.Fprint(file, "RequestTyped:Shell"+"\r\n\n\n")
+				fmt.Fprint(file, "RequestTyped:Shell"+"\n\n\n")
 
 				err := handleShell(channel, req, file, user, os, isFirst)
 
 				if err != nil {
-					log.Print("Handle Shell Error:", err.Error()+"\r\n")
+					log.Print("Handle Shell Error:", err.Error()+"\n")
 					return err
 				}
 
@@ -222,30 +222,30 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 			} else if req.Type == "pty-req" {
 
 			} else if req.Type == "exec" {
-				fmt.Fprint(file, "RequestTyped:Exec"+"\r\n\n\n")
+				fmt.Fprint(file, "RequestTyped:Exec"+"\n\n\n")
 				err := handleExec(channel, req, file, user, os)
 
 				if err != nil {
-					log.Print("Handle Exec Error:", err.Error()+"\r\n")
+					log.Print("Handle Exec Error:", err.Error()+"\n")
 					return err
 				}
 
 				err = channel.Close()
 				if err != nil {
-					log.Print("Channel Close Failed:", err.Error()+"\r\n")
+					log.Print("Channel Close Failed:", err.Error()+"\n")
 					return err
 				}
 				return nil
 			} else {
-				log.Print("Unknown ssh request type:", req.Type+"\r\n")
+				log.Print("Unknown ssh request type:", req.Type+"\n")
 			}
 		}
 	default:
 		errMsg := fmt.Sprintf("Unknown channel type: %s", channelType)
-		log.Print(errMsg + "\r\n")
+		log.Print(errMsg + "\n")
 		err := newChannel.Reject(ssh.UnknownChannelType, errMsg)
 		if err != nil {
-			log.Print("Reject Failed:", err.Error()+"\r\n")
+			log.Print("Reject Failed:", err.Error()+"\n")
 			return err
 		}
 		return errors.New(errMsg)
@@ -285,7 +285,7 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, os s
 			// CentOS
 			terminalHeader = "Last login: Thu Feb  1 13:51:02 2018 from 93.184.216.34\n"
 		} else {
-			errMsg := "Unknown OS: " + os + "\r\n"
+			errMsg := "Unknown OS: " + os + "\n"
 			log.Print(errMsg)
 			return errors.New(errMsg)
 		}
@@ -297,22 +297,22 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, os s
 	for {
 		line, err := term.ReadLine()
 		if err == io.EOF {
-			log.Print("Read EOF", "\r\n")
+			log.Print("Read EOF", "\n")
 			return nil
 		}
 		if err != nil {
-			log.Print("Read Line Failed:", err.Error()+"\r\n")
+			log.Print("Read Line Failed:", err.Error()+"\n")
 			return err
 		}
 		if line == "" {
 			fmt.Fprint(term, line)
-			fmt.Fprint(file, lineLabel+line+"\r\n")
+			fmt.Fprint(file, lineLabel+line+"\n")
 			continue
 		}
 
 		err = emulateCommand([]byte(line), lineLabel, os, term, file)
 		if err != nil {
-			log.Print(err.Error() + "\r\n")
+			log.Print(err.Error() + "\n")
 			return err
 		}
 
@@ -320,8 +320,10 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, os s
 }
 
 func emulateCommand(v []byte, lineLabel string, os string, term *terminal.Terminal, file *os.File) error {
+	fmt.Println(string(v))
 	v = bytes.TrimFunc(v, unicode.IsControl)
 	splitPayload := bytes.Split(v, []byte{32})
+	fmt.Println(string(v))
 
 	commandName := ""
 	commandArgs := []string{}
@@ -334,51 +336,70 @@ func emulateCommand(v []byte, lineLabel string, os string, term *terminal.Termin
 			}
 		}
 	}
+	fmt.Println(commandName, commandArgs)
 	command := commandName + " "
 
 	for _, v := range commandArgs {
 		command += v
 	}
 
+	fmt.Fprint(file, lineLabel+string(v)+"\n")
 	msg := command
-	fmt.Fprint(file, lineLabel+command+"\r\n")
 	if commandName == "uname" {
 		if len(commandArgs) > 0 {
 			if commandArgs[0] == "-a" {
 				if os == Ubuntu {
 					// Ubuntu
-					msg = "Linux ubuntu 4.10.0-35-generic #39~16.04.1-Ubuntu SMP Wed Sep 13 09:02:42 UTC 2017 x86_64 GNU/Linux\r\n"
+					msg = "Linux ubuntu 4.10.0-35-generic #39~16.04.1-Ubuntu SMP Wed Sep 13 09:02:42 UTC 2017 x86_64 GNU/Linux\n"
 				} else if os == KaliLinux {
 					// KaliLinux
-					msg = "Linux kali 4.14.71-v8 #1 SMP PREEMPT Wed Oct 31 21:41:06 UTC 2018 aarch64 GNU/Linux\r\n"
+					msg = "Linux kali 4.14.71-v8 #1 SMP PREEMPT Wed Oct 31 21:41:06 UTC 2018 aarch64 GNU/Linux\n"
 				} else if os == AmazonLinux {
 					// AmazonLinux
-					msg = "Linux ip-170-31-81-10.ec2.internal 4.10.109-90.92.amzn2.x86_64 #1 SMP Mon Apr 1 23:00:38 UTC 2019 x86_64 x86_64 x86_64 GNU/Linux\r\n"
+					msg = "Linux ip-170-31-81-10.ec2.internal 4.10.109-90.92.amzn2.x86_64 #1 SMP Mon Apr 1 23:00:38 UTC 2019 x86_64 x86_64 x86_64 GNU/Linux\n"
 				} else if os == RaspberryPi {
 					// RaspberryPi
-					msg = "Linux raspberrypi 3.18.11-v7+ #781 SMP PREEMPT Tue Apr 21 18:07:59 BST 2015 armv7l GNU/Linux\r\n"
+					msg = "Linux raspberrypi 3.18.11-v7+ #781 SMP PREEMPT Tue Apr 21 18:07:59 BST 2015 armv7l GNU/Linux\n"
 				} else if os == Debian {
 					// Debian
-					msg = "Linux debian 3.2.0-4-amd64 #1 SMP Debian 3.2.65-1+deb7u2 x86_64 GNU/Linux\r\n"
+					msg = "Linux debian 3.2.0-4-amd64 #1 SMP Debian 3.2.65-1+deb7u2 x86_64 GNU/Linux\n"
 				} else if os == CentOS {
 					// CentOS
-					msg = "Linux cent 3.10.0-327.28.2.el7.x86_64 #1 SMP Wed Aug 3 11:11:39 UTC 2016 x86_64 x86_64 x86_64 GNU/Linux\r\n"
+					msg = "Linux cent 3.10.0-327.28.2.el7.x86_64 #1 SMP Wed Aug 3 11:11:39 UTC 2016 x86_64 x86_64 x86_64 GNU/Linux\n"
 				} else {
-					errMsg := "Unknown OS: " + os + "\r\n"
+					errMsg := "Unknown OS: " + os + "\n"
 					log.Print(errMsg)
 					return errors.New(errMsg)
 				}
-
-				fmt.Fprint(term, msg)
-				fmt.Fprint(file, msg)
 			}
 		} else {
-			msg = "Linux\r\n"
-			fmt.Fprint(term, msg)
-			fmt.Fprint(file, msg)
+			msg = "Linux\n"
 		}
+		fmt.Fprint(term, msg)
+		fmt.Fprint(file, msg)
+	} else if commandName == "/ip" {
+		if len(commandArgs) > 0 {
+			if len(commandArgs) == 2 {
+				if commandArgs[0] == "cloud" {
+					if commandArgs[1] == "print" {
+						msg = "         ddns-enabled: yes\n ddns-update-interval: none\n          update-time: yes\n       public-address: 93.184.216.34\n  public-address-ipv6: 2b02:610:7501:2000::2\n             dns-name: 529c0491d41c.sn.example.net\n               status: updated\n"
+					} else {
+						msg = ""
+					}
+				} else {
+					msg = ""
+				}
+			} else {
+				msg = ""
+			}
+		} else {
+			msg = ""
+		}
+		fmt.Fprint(term, msg)
+		fmt.Fprint(file, msg)
 	} else {
-		fmt.Fprint(term, msg+"\r\n")
+		msg = string(v) + "\n"
+		fmt.Fprint(term, msg)
 		fmt.Fprint(file, msg)
 	}
 
@@ -394,7 +415,7 @@ func handleExec(c ssh.Channel, r *ssh.Request, file *os.File, user string, os st
 
 	err := emulateCommand(r.Payload, lineLabel, os, term, file)
 	if err != nil {
-		log.Print(err.Error() + "\r\n")
+		log.Print(err.Error() + "\n")
 		return err
 	}
 	return nil
