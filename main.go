@@ -78,94 +78,94 @@ func main() {
 			log.Println("Listener accept failed:", err)
 			continue
 		}
-		// defer tcpConn.Close()
+
+		tcpTimeout := make(chan string, 1)
+
+		sshTimeout := make(chan string, 1)
+
+		sshConn, channels, _, err := ssh.NewServerConn(tcpConn, serverConfig)
+		if err != nil {
+			log.Println("New server connect failed:", err)
+			err = tcpConn.Close()
+			if err != nil {
+				log.Println(err)
+			}
+			return
+		}
+		defer sshConn.Close()
+
+		tcpTimeout <- "TCP No Timeout"
+
+		utcTime := time.Now().UTC().Format(time.RFC3339Nano)
+
+		fileName := "./log/" + utcTime + ".log"
+
+		file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0666)
+		if err != nil {
+			log.Fatal("Failed open file:", err)
+		}
+		defer file.Close()
+
+		fmt.Fprint(file, "RemoteAddr:"+sshConn.RemoteAddr().String()+"\n")
+		fmt.Fprint(file, "User:"+string(sshConn.User())+"\n")
+		fmt.Fprint(file, "Password:"+password+"\n")
+		fmt.Fprint(file, "ServerVersion:"+string(sshConn.ServerVersion())+"\n")
+		fmt.Fprint(file, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
+		fmt.Fprint(file, "Time:"+utcTime+"\n")
+
+		log.Print("New SSH connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\n")
 
 		go func() {
-
-			tcpTimeout := make(chan string, 1)
-
-			sshTimeout := make(chan string, 1)
-
-			sshConn, channels, requests, err := ssh.NewServerConn(tcpConn, serverConfig)
-			if err != nil {
-				log.Println("New server connect failed:", err)
-				err = tcpConn.Close()
-				if err != nil {
-					log.Println(err)
-				}
-				return
-			}
-			defer sshConn.Close()
-
-			tcpTimeout <- "TCP No Timeout"
-
-			utcTime := time.Now().UTC().Format(time.RFC3339Nano)
-
-			fileName := "./log/" + utcTime + ".log"
-
-			file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0666)
-			if err != nil {
-				log.Fatal("Failed open file:", err)
-			}
-			defer file.Close()
-
-			fmt.Fprint(file, "RemoteAddr:"+sshConn.RemoteAddr().String()+"\n")
-			fmt.Fprint(file, "User:"+string(sshConn.User())+"\n")
-			fmt.Fprint(file, "Password:"+password+"\n")
-			fmt.Fprint(file, "ServerVersion:"+string(sshConn.ServerVersion())+"\n")
-			fmt.Fprint(file, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
-			fmt.Fprint(file, "Time:"+utcTime+"\n")
-
-			log.Print("New SSH connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\n")
-
-			go ssh.DiscardRequests(requests)
-
+			fmt.Println("hello")
 			for newChannel := range channels {
-				err := handleChannel(newChannel, file, sshConn.User(), isFirst)
-				if err != nil {
-					log.Print("HandleChannel Error :", err)
-					err = sshConn.Close()
+				fmt.Println("world")
+				go func() {
+					fmt.Println("hoge")
+					err := handleChannel(newChannel, file, sshConn.User(), isFirst)
 					if err != nil {
-						log.Println(err)
+						log.Print("HandleChannel Error :", err)
+						err = sshConn.Close()
+						if err != nil {
+							log.Println(err)
+						}
+						err = tcpConn.Close()
+						if err != nil {
+							log.Println(err)
+						}
+						return
 					}
-					err = tcpConn.Close()
-					if err != nil {
-						log.Println(err)
-					}
-					return
-				}
+				}()
 			}
-
-			isFirst = false
-
-			sshTimeout <- "SSH No Timeout"
-
-			select {
-			case <-sshTimeout:
-			case <-time.After(time.Duration(timeoutSec) * time.Second):
-				err = sshConn.Close()
-				if err != nil {
-					log.Println(err)
-				}
-				err = tcpConn.Close()
-				if err != nil {
-					log.Println(err)
-				}
-				return
-			}
-
-			select {
-			case <-tcpTimeout:
-			case <-time.After(time.Duration(timeoutSec) * time.Second):
-				tcpConn.Close()
-				err := tcpConn.Close()
-				if err != nil {
-					log.Println(err)
-				}
-				return
-			}
-
 		}()
+
+		isFirst = false
+
+		sshTimeout <- "SSH No Timeout"
+
+		select {
+		case <-sshTimeout:
+		case <-time.After(time.Duration(timeoutSec) * time.Second):
+			err = sshConn.Close()
+			if err != nil {
+				log.Println(err)
+			}
+			err = tcpConn.Close()
+			if err != nil {
+				log.Println(err)
+			}
+			return
+		}
+
+		select {
+		case <-tcpTimeout:
+		case <-time.After(time.Duration(timeoutSec) * time.Second):
+			tcpConn.Close()
+			err := tcpConn.Close()
+			if err != nil {
+				log.Println(err)
+			}
+			return
+		}
 
 	}
 }
@@ -223,6 +223,8 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 				}
 
 				return nil
+
+			} else if req.Type == "env" {
 
 			} else if req.Type == "pty-req" {
 
