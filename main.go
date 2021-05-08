@@ -61,15 +61,15 @@ func main() {
 
 	serverConfig.AddHostKey(privateKey)
 
-	listener, err := net.Listen("tcp", "0.0.0.0:22")
+	listener, err := net.Listen("tcp", "0.0.0.0:2222")
 	if err != nil {
-		log.Fatalf("Failed to listen on 22 (%s)", err)
+		log.Fatalf("Failed to listen on 2222 (%s)", err)
 	}
-	log.Print("Listening on 22 PORT")
+	log.Print("Listening on 2222 PORT")
 
 	for {
 
-		timeoutSec := 10
+		timeoutSec := 10000
 
 		isFirst := true
 
@@ -78,76 +78,52 @@ func main() {
 			log.Println("Listener accept failed:", err)
 			continue
 		}
-		defer tcpConn.Close()
+		// defer tcpConn.Close()
 
 		go func() {
 
 			tcpTimeout := make(chan string, 1)
 
-			go func() {
+			sshTimeout := make(chan string, 1)
 
-				sshTimeout := make(chan string, 1)
-
-				sshConn, channels, requests, err := ssh.NewServerConn(tcpConn, serverConfig)
+			sshConn, channels, requests, err := ssh.NewServerConn(tcpConn, serverConfig)
+			if err != nil {
+				log.Println("New server connect failed:", err)
+				err = tcpConn.Close()
 				if err != nil {
-					log.Println("New server connect failed:", err)
-					err = tcpConn.Close()
-					if err != nil {
-						log.Println(err)
-					}
-					return
+					log.Println(err)
 				}
-				defer sshConn.Close()
+				return
+			}
+			defer sshConn.Close()
 
-				tcpTimeout <- "TCP No Timeout"
+			tcpTimeout <- "TCP No Timeout"
 
-				utcTime := time.Now().UTC().Format(time.RFC3339Nano)
+			utcTime := time.Now().UTC().Format(time.RFC3339Nano)
 
-				fileName := "./log/" + utcTime + ".log"
+			fileName := "./log/" + utcTime + ".log"
 
-				file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0666)
+			file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0666)
+			if err != nil {
+				log.Fatal("Failed open file:", err)
+			}
+			defer file.Close()
+
+			fmt.Fprint(file, "RemoteAddr:"+sshConn.RemoteAddr().String()+"\n")
+			fmt.Fprint(file, "User:"+string(sshConn.User())+"\n")
+			fmt.Fprint(file, "Password:"+password+"\n")
+			fmt.Fprint(file, "ServerVersion:"+string(sshConn.ServerVersion())+"\n")
+			fmt.Fprint(file, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
+			fmt.Fprint(file, "Time:"+utcTime+"\n")
+
+			log.Print("New SSH connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\n")
+
+			go ssh.DiscardRequests(requests)
+
+			for newChannel := range channels {
+				err := handleChannel(newChannel, file, sshConn.User(), isFirst)
 				if err != nil {
-					log.Fatal("Failed open file:", err)
-				}
-				defer file.Close()
-
-				fmt.Fprint(file, "RemoteAddr:"+sshConn.RemoteAddr().String()+"\n")
-				fmt.Fprint(file, "User:"+string(sshConn.User())+"\n")
-				fmt.Fprint(file, "Password:"+password+"\n")
-				fmt.Fprint(file, "ServerVersion:"+string(sshConn.ServerVersion())+"\n")
-				fmt.Fprint(file, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
-				fmt.Fprint(file, "Time:"+utcTime+"\n")
-
-				log.Print("New SSH connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\n")
-
-				go ssh.DiscardRequests(requests)
-
-				go func() {
-					for newChannel := range channels {
-						err := handleChannel(newChannel, file, sshConn.User(), isFirst)
-						if err != nil {
-							log.Print("HandleChannel Error :", err)
-							err = sshConn.Close()
-							if err != nil {
-								log.Println(err)
-							}
-							err = tcpConn.Close()
-							if err != nil {
-								log.Println(err)
-							}
-							return
-						}
-					}
-
-					isFirst = false
-
-					sshTimeout <- "SSH No Timeout"
-
-				}()
-
-				select {
-				case <-sshTimeout:
-				case <-time.After(time.Duration(timeoutSec) * time.Second):
+					log.Print("HandleChannel Error :", err)
 					err = sshConn.Close()
 					if err != nil {
 						log.Println(err)
@@ -158,8 +134,25 @@ func main() {
 					}
 					return
 				}
+			}
 
-			}()
+			isFirst = false
+
+			sshTimeout <- "SSH No Timeout"
+
+			select {
+			case <-sshTimeout:
+			case <-time.After(time.Duration(timeoutSec) * time.Second):
+				err = sshConn.Close()
+				if err != nil {
+					log.Println(err)
+				}
+				err = tcpConn.Close()
+				if err != nil {
+					log.Println(err)
+				}
+				return
+			}
 
 			select {
 			case <-tcpTimeout:
@@ -195,6 +188,7 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 		}
 		return nil
 	case "session":
+		fmt.Println("sesstioon")
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
 			errMsg := fmt.Sprintf("ConnectionFailed: because of %s", err.Error())
