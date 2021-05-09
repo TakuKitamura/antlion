@@ -167,12 +167,9 @@ func main() {
 func handleChannel(sshNewChannel ssh.NewChannel, logFile *os.File, userName string) error {
 
 	channelType := sshNewChannel.ChannelType()
-	fmt.Fprint(logFile, "ChannelType:"+channelType+"\n")
 
 	switch channelType {
 	case "direct-tcpip":
-		extraData := sshNewChannel.ExtraData()
-		fmt.Fprint(logFile, "ExtraData:"+string(extraData)+"\n")
 		errMsg := fmt.Sprintf("forbidden channel type: %s", channelType)
 		log.Print(errMsg + "\n")
 		err := sshNewChannel.Reject(ssh.UnknownChannelType, errMsg)
@@ -208,7 +205,7 @@ func handleChannel(sshNewChannel ssh.NewChannel, logFile *os.File, userName stri
 			if c.Type == "shell" {
 				fmt.Fprint(logFile, "RequestTyped:Shell"+"\n\n\n")
 
-				err := handleShell(sshChannel, c, logFile, userName, kernelInfo)
+				err := handleShell(sshChannel, logFile, userName, kernelInfo)
 
 				if err != nil {
 					log.Print("handle shell error:", err.Error()+"\n")
@@ -255,7 +252,7 @@ func handleChannel(sshNewChannel ssh.NewChannel, logFile *os.File, userName stri
 	return errors.New(errMsg)
 }
 
-func handleShell(c ssh.Channel, r *ssh.Request, logFile *os.File, userName string, kernelInfo string) error {
+func handleShell(c ssh.Channel, logFile *os.File, userName string, kernelInfo string) error {
 	term := term.NewTerminal(c, "")
 	lineLabel := userName + "@" + kernelInfo + ":~$ "
 
