@@ -122,7 +122,6 @@ func main() {
 			if err != nil {
 				log.Fatal("failed open log file:", err)
 			}
-			defer logFile.Close()
 
 			fmt.Fprint(logFile, "RemoteAddr:"+sshConn.RemoteAddr().String()+"\n")
 			fmt.Fprint(logFile, "User:"+string(sshConn.User())+"\n")
