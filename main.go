@@ -117,11 +117,10 @@ func main() {
 
 		go func() {
 			fmt.Println("hello")
-			for newChannel := range channels {
-				fmt.Println("world")
-				go func() {
+			for c := range channels {
+				go func(sshNewChannel ssh.NewChannel) {
 					fmt.Println("hoge")
-					err := handleChannel(newChannel, file, sshConn.User(), isFirst)
+					err := handleChannel(sshNewChannel, file, sshConn.User(), isFirst)
 					if err != nil {
 						log.Print("HandleChannel Error :", err)
 						err = sshConn.Close()
@@ -134,7 +133,7 @@ func main() {
 						}
 						return
 					}
-				}()
+				}(c)
 			}
 		}()
 
