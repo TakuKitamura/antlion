@@ -50,6 +50,10 @@ func main() {
 		"aes256-ctr",
 	}
 
+	if _, err := os.Stat("./log"); os.IsNotExist(err) {
+		os.Mkdir("./log", 0766)
+	}
+
 	privateKeyBytes, err := ioutil.ReadFile("id_rsa")
 	if err != nil {
 		log.Fatal("failed to load private key (./id_rsa)")
@@ -68,9 +72,11 @@ func main() {
 	}
 	log.Print("listening on 2222 port")
 
-	for {
+	timeoutSec := 60
 
-		timeoutSec := 60
+	log.Print("ssh timeout is ", timeoutSec, "s")
+
+	for {
 
 		tcpConn, err := tcpListener.Accept()
 		if err != nil {
