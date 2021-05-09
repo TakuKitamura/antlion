@@ -251,13 +251,13 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 		log.Print(errMsg + "\n")
 		err := newChannel.Reject(ssh.UnknownChannelType, errMsg)
 		if err != nil {
-			log.Print("Reject Failed:", err.Error()+"\n")
+			log.Print("reject failed:", err.Error()+"\n")
 			return err
 		}
 		return errors.New(errMsg)
 	}
 
-	errMsg := "Unknown ChannelType"
+	errMsg := "unknown channel type"
 	return errors.New(errMsg)
 }
 
@@ -267,7 +267,7 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, os s
 
 	term.SetPrompt(lineLabel + string(term.Escape.Reset))
 
-	if isFirst == true {
+	if isFirst {
 
 		var terminalHeader string
 
@@ -290,7 +290,7 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, os s
 			// CentOS
 			terminalHeader = "Last login: Thu Feb  1 13:51:02 2018 from 93.184.216.34\n"
 		} else {
-			errMsg := "Unknown OS: " + os + "\n"
+			errMsg := "unknown os: " + os + "\n"
 			log.Print(errMsg)
 			return errors.New(errMsg)
 		}
@@ -372,7 +372,7 @@ func emulateCommand(v []byte, lineLabel string, os string, term *term.Terminal, 
 					// CentOS
 					msg = "Linux cent 3.10.0-327.28.2.el7.x86_64 #1 SMP Wed Aug 3 11:11:39 UTC 2016 x86_64 x86_64 x86_64 GNU/Linux\n"
 				} else {
-					errMsg := "Unknown OS: " + os + "\n"
+					errMsg := "unknown os: " + os + "\n"
 					log.Print(errMsg)
 					return errors.New(errMsg)
 				}
