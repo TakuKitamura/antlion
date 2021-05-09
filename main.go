@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"strings"
 	"time"
 	"unicode"
 
@@ -51,31 +52,29 @@ func main() {
 
 	privateKeyBytes, err := ioutil.ReadFile("id_rsa")
 	if err != nil {
-		log.Fatal("Failed to load private key (./id_rsa)")
+		log.Fatal("failed to load private key (./id_rsa)")
 	}
 
 	privateKey, err := ssh.ParsePrivateKey(privateKeyBytes)
 	if err != nil {
-		log.Fatal("Failed to parse private key")
+		log.Fatal("failed to parse private key")
 	}
 
 	serverConfig.AddHostKey(privateKey)
 
-	listener, err := net.Listen("tcp", "0.0.0.0:2222")
+	tcpListener, err := net.Listen("tcp", "0.0.0.0:2222")
 	if err != nil {
-		log.Fatalf("Failed to listen on 2222 (%s)", err)
+		log.Fatalf("failed to listen on 2222 (%s)", err)
 	}
-	log.Print("Listening on 2222 PORT")
+	log.Print("listening on 2222 port")
 
 	for {
 
 		timeoutSec := 10000
 
-		isFirst := true
-
-		tcpConn, err := listener.Accept()
+		tcpConn, err := tcpListener.Accept()
 		if err != nil {
-			log.Println("Listener accept failed:", err)
+			log.Println("listener accept failed:", err)
 			continue
 		}
 
@@ -83,9 +82,9 @@ func main() {
 
 		sshTimeout := make(chan string, 1)
 
-		sshConn, channels, _, err := ssh.NewServerConn(tcpConn, serverConfig)
+		sshConn, sshCh, _, err := ssh.NewServerConn(tcpConn, serverConfig)
 		if err != nil {
-			log.Println("New server connect failed:", err)
+			log.Println("new server connect failed:", err)
 			err = tcpConn.Close()
 			if err != nil {
 				log.Println(err)
@@ -98,31 +97,29 @@ func main() {
 
 		utcTime := time.Now().UTC().Format(time.RFC3339Nano)
 
-		fileName := "./log/" + utcTime + ".log"
+		logFileName := "./log/" + utcTime + ".log"
 
-		file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0666)
+		logFile, err := os.OpenFile(logFileName, os.O_WRONLY|os.O_CREATE, 0666)
 		if err != nil {
-			log.Fatal("Failed open file:", err)
+			log.Fatal("failed open log file:", err)
 		}
-		defer file.Close()
+		defer logFile.Close()
 
-		fmt.Fprint(file, "RemoteAddr:"+sshConn.RemoteAddr().String()+"\n")
-		fmt.Fprint(file, "User:"+string(sshConn.User())+"\n")
-		fmt.Fprint(file, "Password:"+password+"\n")
-		fmt.Fprint(file, "ServerVersion:"+string(sshConn.ServerVersion())+"\n")
-		fmt.Fprint(file, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
-		fmt.Fprint(file, "Time:"+utcTime+"\n")
+		fmt.Fprint(logFile, "RemoteAddr:"+sshConn.RemoteAddr().String()+"\n")
+		fmt.Fprint(logFile, "User:"+string(sshConn.User())+"\n")
+		fmt.Fprint(logFile, "Password:"+password+"\n")
+		fmt.Fprint(logFile, "ServerVersion:"+string(sshConn.ServerVersion())+"\n")
+		fmt.Fprint(logFile, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
+		fmt.Fprint(logFile, "Time:"+utcTime+"\n")
 
-		log.Print("New SSH connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\n")
+		log.Print("new ssh connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\n")
 
 		go func() {
-			fmt.Println("hello")
-			for c := range channels {
+			for c := range sshCh {
 				go func(sshNewChannel ssh.NewChannel) {
-					fmt.Println("hoge")
-					err := handleChannel(sshNewChannel, file, sshConn.User(), isFirst)
+					err := handleChannel(sshNewChannel, logFile, sshConn.User())
 					if err != nil {
-						log.Print("HandleChannel Error :", err)
+						log.Print("handle channel error :", err)
 						err = sshConn.Close()
 						if err != nil {
 							log.Println(err)
@@ -136,8 +133,6 @@ func main() {
 				}(c)
 			}
 		}()
-
-		isFirst = false
 
 		sshTimeout <- "SSH No Timeout"
 
@@ -169,87 +164,86 @@ func main() {
 	}
 }
 
-func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirst bool) error {
+func handleChannel(sshNewChannel ssh.NewChannel, logFile *os.File, userName string) error {
 
-	channelType := newChannel.ChannelType()
-	fmt.Fprint(file, "ChannelType:"+channelType+"\n")
+	channelType := sshNewChannel.ChannelType()
+	fmt.Fprint(logFile, "ChannelType:"+channelType+"\n")
 
 	switch channelType {
 	case "direct-tcpip":
-		extraData := newChannel.ExtraData()
-		fmt.Fprint(file, "ExtraData:"+string(extraData)+"\n")
-		errMsg := fmt.Sprintf("Forbidden channel type: %s", channelType)
+		extraData := sshNewChannel.ExtraData()
+		fmt.Fprint(logFile, "ExtraData:"+string(extraData)+"\n")
+		errMsg := fmt.Sprintf("forbidden channel type: %s", channelType)
 		log.Print(errMsg + "\n")
-		err := newChannel.Reject(ssh.UnknownChannelType, errMsg)
+		err := sshNewChannel.Reject(ssh.UnknownChannelType, errMsg)
 		if err != nil {
-			log.Print("Reject Failed:", err.Error()+"\n")
+			log.Print("reject failed:", err.Error()+"\n")
 			return err
 		}
 		return nil
 	case "session":
-		fmt.Println("sesstioon")
-		channel, requests, err := newChannel.Accept()
+		sshChannel, sshRequest, err := sshNewChannel.Accept()
 		if err != nil {
-			errMsg := fmt.Sprintf("ConnectionFailed: because of %s", err.Error())
+			errMsg := fmt.Sprintf("connection failed: because of %s", err.Error())
 			log.Print(errMsg + "\n")
-			err := newChannel.Reject(ssh.ConnectionFailed, errMsg)
+			err := sshNewChannel.Reject(ssh.ConnectionFailed, errMsg)
 			if err != nil {
-				log.Print("Reject Failed:", err.Error()+"\n")
+				log.Print("reject Failed:", err.Error()+"\n")
 				return err
 			}
 			return nil
 		}
 
-		defer channel.Close()
+		defer sshChannel.Close()
 
-		osVersions := []string{Ubuntu, KaliLinux, RaspberryPi, AmazonLinux, CentOS, Debian}
+		kernelVersions := []string{Ubuntu, KaliLinux, RaspberryPi, AmazonLinux, CentOS, Debian}
 
 		rand.Seed(time.Now().UnixNano())
 
-		os := osVersions[rand.Intn(len(osVersions))]
+		kernelInfo := kernelVersions[rand.Intn(len(kernelVersions))]
 
-		fmt.Fprint(file, "OS:"+os+"\n")
+		fmt.Fprint(logFile, "OS:"+kernelInfo+"\n")
 
-		for req := range requests {
-			if req.Type == "shell" {
-				fmt.Fprint(file, "RequestTyped:Shell"+"\n\n\n")
+		for c := range sshRequest {
+			if c.Type == "shell" {
+				fmt.Fprint(logFile, "RequestTyped:Shell"+"\n\n\n")
 
-				err := handleShell(channel, req, file, user, os, isFirst)
+				err := handleShell(sshChannel, c, logFile, userName, kernelInfo)
 
 				if err != nil {
-					log.Print("Handle Shell Error:", err.Error()+"\n")
+					log.Print("handle shell error:", err.Error()+"\n")
 					return err
 				}
 
 				return nil
 
-			} else if req.Type == "env" {
+			} else if c.Type == "env" {
 
-			} else if req.Type == "pty-req" {
+			} else if c.Type == "pty-req" {
 
-			} else if req.Type == "exec" {
-				fmt.Fprint(file, "RequestTyped:Exec"+"\n\n\n")
-				err := handleExec(channel, req, file, user, os)
+			} else if c.Type == "exec" {
+				fmt.Fprint(logFile, "RequestTyped:Exec"+"\n\n\n")
+				err := handleExec(sshChannel, c, logFile, userName, kernelInfo)
 
 				if err != nil {
-					log.Print("Handle Exec Error:", err.Error()+"\n")
+					log.Print("handle exec error:", err.Error()+"\n")
 					return err
 				}
 
-				err = channel.Close()
+				err = sshChannel.Close()
 				if err != nil {
-					log.Print("Channel Close Failed:", err.Error()+"\n")
+					log.Print("channel close failed:", err.Error()+"\n")
 					return err
 				}
 				return nil
 			} else {
-				log.Print("Unknown ssh request type:", req.Type+"\n")
+				log.Print("unknown ssh request type:", c.Type+"\n")
 			}
 		}
 	default:
-		errMsg := fmt.Sprintf("Unknown channel type: %s", channelType)
+		errMsg := fmt.Sprintf("unknown channel type: %s", channelType)
 		log.Print(errMsg + "\n")
-		err := newChannel.Reject(ssh.UnknownChannelType, errMsg)
+		err := sshNewChannel.Reject(ssh.UnknownChannelType, errMsg)
 		if err != nil {
 			log.Print("reject failed:", err.Error()+"\n")
 			return err
@@ -261,61 +255,58 @@ func handleChannel(newChannel ssh.NewChannel, file *os.File, user string, isFirs
 	return errors.New(errMsg)
 }
 
-func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, os string, isFirst bool) error {
+func handleShell(c ssh.Channel, r *ssh.Request, logFile *os.File, userName string, kernelInfo string) error {
 	term := term.NewTerminal(c, "")
-	lineLabel := user + "@" + os + ":~$ "
+	lineLabel := userName + "@" + kernelInfo + ":~$ "
 
 	term.SetPrompt(lineLabel + string(term.Escape.Reset))
 
-	if isFirst {
+	var terminalHeader string
 
-		var terminalHeader string
-
-		if os == Ubuntu {
-			// Ubuntu
-			terminalHeader = "Linux ubuntu 2.6.20-16-generic #2 SMP Thu Jun 7 19:00:28 UTC 2007 x86_64\n\nThe programs included with the Ubuntu system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nUbuntu comes with ABSOLUTELY NO WARRANTY, to the extent permitted by applicable law.\n\nLast login: Mon Aug 13 01:05:46 2007 from 93.184.216.34\n"
-		} else if os == KaliLinux {
-			// KaliLinux
-			terminalHeader = "Linux kali 4.14.71-v8 #1 SMP PREEMPT Wed Oct 31 21:41:06 UTC 2018 aarch64\n\nThe programs included with the Kali GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nKali GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\nLast login: Thu Feb  1 13:51:02 2018 from 93.184.216.34\n"
-		} else if os == AmazonLinux {
-			// AmazonLinux
-			terminalHeader = "Last login: Sat Jun  1 09:34:32 2019 from 93.184.216.34\n\n__|  __|_  )\n_|  (     /   Amazon Linux 2 AMI\n___|\\___|___\n\nhttps://aws.amazon.com/amazon-linux-2/\n5 package(s) needed for security, out of 7 available\nRun \"sudo yum update\" to apply all updates.\n"
-		} else if os == RaspberryPi {
-			// RaspberryPi
-			terminalHeader = "Linux rasPi 4.9.41-v7+ #1023 SMP Tue Aug 8 16:00:15 BST 2017 armv7l\n\nThe programs included with the Debian GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nDebian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\nLast login: Wed Oct 11 18:54:03 2017 from 93.184.216.34\n"
-		} else if os == Debian {
-			// Debian
-			terminalHeader = "Linux debian 3.6.5-x86_64 #1 SMP Sun Nov 4 12:40:43 EST 2012 x86_64\n\nThe programs included with the Debian GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nDebian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\nLast login: Sat Dec 22 13:38:52 2012 from 93.184.216.34\n"
-		} else if os == CentOS {
-			// CentOS
-			terminalHeader = "Last login: Thu Feb  1 13:51:02 2018 from 93.184.216.34\n"
-		} else {
-			errMsg := "unknown os: " + os + "\n"
-			log.Print(errMsg)
-			return errors.New(errMsg)
-		}
-
-		fmt.Fprint(term, terminalHeader)
-		fmt.Fprint(file, terminalHeader)
+	if kernelInfo == Ubuntu {
+		// Ubuntu
+		terminalHeader = "Linux ubuntu 2.6.20-16-generic #2 SMP Thu Jun 7 19:00:28 UTC 2007 x86_64\n\nThe programs included with the Ubuntu system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nUbuntu comes with ABSOLUTELY NO WARRANTY, to the extent permitted by applicable law.\n\nLast login: Mon Aug 13 01:05:46 2007 from 93.184.216.34\n"
+	} else if kernelInfo == KaliLinux {
+		// KaliLinux
+		terminalHeader = "Linux kali 4.14.71-v8 #1 SMP PREEMPT Wed Oct 31 21:41:06 UTC 2018 aarch64\n\nThe programs included with the Kali GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nKali GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\nLast login: Thu Feb  1 13:51:02 2018 from 93.184.216.34\n"
+	} else if kernelInfo == AmazonLinux {
+		// AmazonLinux
+		terminalHeader = "Last login: Sat Jun  1 09:34:32 2019 from 93.184.216.34\n\n__|  __|_  )\n_|  (     /   Amazon Linux 2 AMI\n___|\\___|___\n\nhttps://aws.amazon.com/amazon-linux-2/\n5 package(s) needed for security, out of 7 available\nRun \"sudo yum update\" to apply all updates.\n"
+	} else if kernelInfo == RaspberryPi {
+		// RaspberryPi
+		terminalHeader = "Linux rasPi 4.9.41-v7+ #1023 SMP Tue Aug 8 16:00:15 BST 2017 armv7l\n\nThe programs included with the Debian GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nDebian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\nLast login: Wed Oct 11 18:54:03 2017 from 93.184.216.34\n"
+	} else if kernelInfo == Debian {
+		// Debian
+		terminalHeader = "Linux debian 3.6.5-x86_64 #1 SMP Sun Nov 4 12:40:43 EST 2012 x86_64\n\nThe programs included with the Debian GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nDebian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\nLast login: Sat Dec 22 13:38:52 2012 from 93.184.216.34\n"
+	} else if kernelInfo == CentOS {
+		// CentOS
+		terminalHeader = "Last login: Thu Feb  1 13:51:02 2018 from 93.184.216.34\n"
+	} else {
+		errMsg := "unknown kernel info: " + kernelInfo + "\n"
+		log.Print(errMsg)
+		return errors.New(errMsg)
 	}
+
+	fmt.Fprint(term, terminalHeader)
+	fmt.Fprint(logFile, terminalHeader)
 
 	for {
 		line, err := term.ReadLine()
 		if err == io.EOF {
-			log.Print("Read EOF", "\n")
+			log.Print("read eof", "\n")
 			return nil
 		}
 		if err != nil {
-			log.Print("Read Line Failed:", err.Error()+"\n")
+			log.Print("read line failed:", err.Error()+"\n")
 			return err
 		}
 		if line == "" {
 			fmt.Fprint(term, line)
-			fmt.Fprint(file, lineLabel+line+"\n")
+			fmt.Fprint(logFile, lineLabel+line+"\n")
 			continue
 		}
 
-		err = emulateCommand([]byte(line), lineLabel, os, term, file)
+		err = emulateCommand([]byte(line), lineLabel, kernelInfo, term, logFile)
 		if err != nil {
 			log.Print(err.Error() + "\n")
 			return err
@@ -324,11 +315,9 @@ func handleShell(c ssh.Channel, r *ssh.Request, file *os.File, user string, os s
 	}
 }
 
-func emulateCommand(v []byte, lineLabel string, os string, term *term.Terminal, file *os.File) error {
-	fmt.Println(string(v))
+func emulateCommand(v []byte, lineLabel string, kernelInfo string, term *term.Terminal, logFile *os.File) error {
 	v = bytes.TrimFunc(v, unicode.IsControl)
 	splitPayload := bytes.Split(v, []byte{32})
-	fmt.Println(string(v))
 
 	commandName := ""
 	commandArgs := []string{}
@@ -341,38 +330,38 @@ func emulateCommand(v []byte, lineLabel string, os string, term *term.Terminal, 
 			}
 		}
 	}
-	fmt.Println(commandName, commandArgs)
+	fmt.Println("$", commandName, strings.Join(commandArgs, " "))
 	command := commandName + " "
 
 	for _, v := range commandArgs {
 		command += v
 	}
 
-	fmt.Fprint(file, lineLabel+string(v)+"\n")
+	fmt.Fprint(logFile, lineLabel+string(v)+"\n")
 	msg := command
 	if commandName == "uname" {
 		if len(commandArgs) > 0 {
 			if commandArgs[0] == "-a" {
-				if os == Ubuntu {
+				if kernelInfo == Ubuntu {
 					// Ubuntu
 					msg = "Linux ubuntu 4.10.0-35-generic #39~16.04.1-Ubuntu SMP Wed Sep 13 09:02:42 UTC 2017 x86_64 GNU/Linux\n"
-				} else if os == KaliLinux {
+				} else if kernelInfo == KaliLinux {
 					// KaliLinux
 					msg = "Linux kali 4.14.71-v8 #1 SMP PREEMPT Wed Oct 31 21:41:06 UTC 2018 aarch64 GNU/Linux\n"
-				} else if os == AmazonLinux {
+				} else if kernelInfo == AmazonLinux {
 					// AmazonLinux
 					msg = "Linux ip-170-31-81-10.ec2.internal 4.10.109-90.92.amzn2.x86_64 #1 SMP Mon Apr 1 23:00:38 UTC 2019 x86_64 x86_64 x86_64 GNU/Linux\n"
-				} else if os == RaspberryPi {
+				} else if kernelInfo == RaspberryPi {
 					// RaspberryPi
 					msg = "Linux raspberrypi 3.18.11-v7+ #781 SMP PREEMPT Tue Apr 21 18:07:59 BST 2015 armv7l GNU/Linux\n"
-				} else if os == Debian {
+				} else if kernelInfo == Debian {
 					// Debian
 					msg = "Linux debian 3.2.0-4-amd64 #1 SMP Debian 3.2.65-1+deb7u2 x86_64 GNU/Linux\n"
-				} else if os == CentOS {
+				} else if kernelInfo == CentOS {
 					// CentOS
 					msg = "Linux cent 3.10.0-327.28.2.el7.x86_64 #1 SMP Wed Aug 3 11:11:39 UTC 2016 x86_64 x86_64 x86_64 GNU/Linux\n"
 				} else {
-					errMsg := "unknown os: " + os + "\n"
+					errMsg := "unknown kernel info: " + kernelInfo + "\n"
 					log.Print(errMsg)
 					return errors.New(errMsg)
 				}
@@ -381,7 +370,7 @@ func emulateCommand(v []byte, lineLabel string, os string, term *term.Terminal, 
 			msg = "Linux\n"
 		}
 		fmt.Fprint(term, msg)
-		fmt.Fprint(file, msg)
+		fmt.Fprint(logFile, msg)
 	} else if commandName == "/ip" {
 		if len(commandArgs) > 0 {
 			if len(commandArgs) == 2 {
@@ -401,24 +390,24 @@ func emulateCommand(v []byte, lineLabel string, os string, term *term.Terminal, 
 			msg = ""
 		}
 		fmt.Fprint(term, msg)
-		fmt.Fprint(file, msg)
+		fmt.Fprint(logFile, msg)
 	} else {
 		msg = string(v) + "\n"
 		fmt.Fprint(term, msg)
-		fmt.Fprint(file, msg)
+		fmt.Fprint(logFile, msg)
 	}
 
 	return nil
 }
 
-func handleExec(c ssh.Channel, r *ssh.Request, file *os.File, user string, os string) error {
+func handleExec(c ssh.Channel, r *ssh.Request, logFile *os.File, userName string, kernelInfo string) error {
 	term := term.NewTerminal(c, "")
 
-	lineLabel := user + "@" + os + ":~$ "
+	lineLabel := userName + "@" + kernelInfo + ":~$ "
 
 	term.SetPrompt(lineLabel + string(term.Escape.Reset))
 
-	err := emulateCommand(r.Payload, lineLabel, os, term, file)
+	err := emulateCommand(r.Payload, lineLabel, kernelInfo, term, logFile)
 	if err != nil {
 		log.Print(err.Error() + "\n")
 		return err
