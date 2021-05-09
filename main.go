@@ -77,6 +77,11 @@ func main() {
 
 	log.Print("ssh timeout is ", timeoutSec, "s")
 
+	commandList, err := os.OpenFile("./log/commands.txt", os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		log.Fatal("failed open log file:", err)
+	}
+
 	for {
 
 		tcpConn, err := tcpListener.Accept()
@@ -135,7 +140,7 @@ func main() {
 			go func() {
 				for c := range sshCh {
 					go func(sshNewChannel ssh.NewChannel) {
-						err := handleChannel(sshNewChannel, logFile, sshConn.User())
+						err := handleChannel(sshNewChannel, logFile, commandList, sshConn.User())
 						if err != nil {
 							log.Print("handle channel error :", err)
 							err = sshConn.Close()
@@ -157,7 +162,7 @@ func main() {
 	}
 }
 
-func handleChannel(sshNewChannel ssh.NewChannel, logFile *os.File, userName string) error {
+func handleChannel(sshNewChannel ssh.NewChannel, logFile *os.File, commandList *os.File, userName string) error {
 
 	channelType := sshNewChannel.ChannelType()
 
@@ -220,7 +225,7 @@ func handleChannel(sshNewChannel ssh.NewChannel, logFile *os.File, userName stri
 			if c.Type == "shell" {
 				fmt.Fprint(logFile, "RequestTyped:Shell"+"\n-----\n")
 
-				err := handleShell(sshChannel, logFile, userName, kernelInfo)
+				err := handleShell(sshChannel, logFile, commandList, userName, kernelInfo)
 
 				if err != nil {
 					log.Print("handle shell error:", err.Error()+"\n")
@@ -235,7 +240,7 @@ func handleChannel(sshNewChannel ssh.NewChannel, logFile *os.File, userName stri
 
 			} else if c.Type == "exec" {
 				fmt.Fprint(logFile, "RequestTyped:Exec"+"\n-----\n")
-				err := handleExec(sshChannel, c, logFile, userName, kernelInfo)
+				err := handleExec(sshChannel, c, logFile, commandList, userName, kernelInfo)
 
 				if err != nil {
 					log.Print("handle exec error:", err.Error()+"\n")
@@ -267,7 +272,7 @@ func handleChannel(sshNewChannel ssh.NewChannel, logFile *os.File, userName stri
 	return errors.New(errMsg)
 }
 
-func handleShell(c ssh.Channel, logFile *os.File, userName string, kernelInfo string) error {
+func handleShell(c ssh.Channel, logFile *os.File, commandList *os.File, userName string, kernelInfo string) error {
 	term := term.NewTerminal(c, "")
 	lineLabel := userName + "@" + kernelInfo + ":~$ "
 
@@ -313,12 +318,10 @@ func handleShell(c ssh.Channel, logFile *os.File, userName string, kernelInfo st
 			return err
 		}
 		if line == "" {
-			// fmt.Fprint(term, line)
-			// fmt.Fprint(logFile, lineLabel+line+"\n")
 			continue
 		}
 
-		err = emulateCommand([]byte(line), lineLabel, kernelInfo, term, logFile)
+		err = emulateCommand([]byte(line), lineLabel, kernelInfo, term, logFile, commandList)
 		if err != nil {
 			log.Print(err.Error() + "\n")
 			return err
@@ -327,7 +330,7 @@ func handleShell(c ssh.Channel, logFile *os.File, userName string, kernelInfo st
 	}
 }
 
-func emulateCommand(v []byte, lineLabel string, kernelInfo string, term *term.Terminal, logFile *os.File) error {
+func emulateCommand(v []byte, lineLabel string, kernelInfo string, term *term.Terminal, logFile *os.File, commandList *os.File) error {
 	v = bytes.TrimFunc(v, unicode.IsControl)
 	splitPayload := bytes.Split(v, []byte{32})
 
@@ -350,6 +353,7 @@ func emulateCommand(v []byte, lineLabel string, kernelInfo string, term *term.Te
 	}
 
 	fmt.Fprint(logFile, "$ "+string(v)+"\n")
+	fmt.Fprint(commandList, "$ "+string(v)+"\n")
 	msg := command
 	if commandName == "uname" {
 		if len(commandArgs) > 0 {
@@ -412,14 +416,14 @@ func emulateCommand(v []byte, lineLabel string, kernelInfo string, term *term.Te
 	return nil
 }
 
-func handleExec(c ssh.Channel, r *ssh.Request, logFile *os.File, userName string, kernelInfo string) error {
+func handleExec(c ssh.Channel, r *ssh.Request, logFile *os.File, commandList *os.File, userName string, kernelInfo string) error {
 	term := term.NewTerminal(c, "")
 
 	lineLabel := userName + "@" + kernelInfo + ":~$ "
 
 	term.SetPrompt(lineLabel + string(term.Escape.Reset))
 
-	err := emulateCommand(r.Payload, lineLabel, kernelInfo, term, logFile)
+	err := emulateCommand(r.Payload, lineLabel, kernelInfo, term, logFile, commandList)
 	if err != nil {
 		log.Print(err.Error() + "\n")
 		return err
