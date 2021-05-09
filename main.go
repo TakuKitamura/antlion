@@ -70,6 +70,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen on 2222 (%s)", err)
 	}
+
 	log.Print("listening on 2222 port")
 
 	timeoutSec := 60
@@ -91,9 +92,8 @@ func main() {
 			if err != nil {
 				log.Println(err)
 			}
-			return
+			continue
 		}
-		defer sshConn.Close()
 
 		go func() {
 			time.Sleep(time.Duration(timeoutSec) * time.Second)
