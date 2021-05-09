@@ -169,14 +169,36 @@ func handleChannel(sshNewChannel ssh.NewChannel, logFile *os.File, userName stri
 	channelType := sshNewChannel.ChannelType()
 
 	switch channelType {
-	case "direct-tcpip":
+	case "direct-tcpip": // ssh fowarding
 		errMsg := fmt.Sprintf("forbidden channel type: %s", channelType)
 		log.Print(errMsg + "\n")
-		err := sshNewChannel.Reject(ssh.UnknownChannelType, errMsg)
+
+		sshChannel, _, err := sshNewChannel.Accept()
 		if err != nil {
-			log.Print("reject failed:", err.Error()+"\n")
-			return err
+			errMsg := fmt.Sprintf("connection failed: because of %s", err.Error())
+			log.Print(errMsg + "\n")
+			err := sshNewChannel.Reject(ssh.ConnectionFailed, errMsg)
+			if err != nil {
+				log.Print("reject Failed:", err.Error()+"\n")
+				return err
+			}
+			return nil
 		}
+
+		defer sshChannel.Close()
+
+		_, err = sshChannel.Write([]byte(" "))
+		if err != nil {
+			errMsg := fmt.Sprintf("write data failed: because of %s", err.Error())
+			log.Print(errMsg + "\n")
+			err := sshNewChannel.Reject(ssh.ConnectionFailed, errMsg)
+			if err != nil {
+				log.Print("reject Failed:", err.Error()+"\n")
+				return err
+			}
+			return nil
+		}
+
 		return nil
 	case "session":
 		sshChannel, sshRequest, err := sshNewChannel.Accept()
