@@ -218,7 +218,7 @@ func handleChannel(sshNewChannel ssh.NewChannel, logFile *os.File, userName stri
 
 		for c := range sshRequest {
 			if c.Type == "shell" {
-				fmt.Fprint(logFile, "RequestTyped:Shell"+"\n\n\n")
+				fmt.Fprint(logFile, "RequestTyped:Shell"+"\n-----\n")
 
 				err := handleShell(sshChannel, logFile, userName, kernelInfo)
 
@@ -234,7 +234,7 @@ func handleChannel(sshNewChannel ssh.NewChannel, logFile *os.File, userName stri
 			} else if c.Type == "pty-req" {
 
 			} else if c.Type == "exec" {
-				fmt.Fprint(logFile, "RequestTyped:Exec"+"\n\n\n")
+				fmt.Fprint(logFile, "RequestTyped:Exec"+"\n-----\n")
 				err := handleExec(sshChannel, c, logFile, userName, kernelInfo)
 
 				if err != nil {
@@ -313,8 +313,8 @@ func handleShell(c ssh.Channel, logFile *os.File, userName string, kernelInfo st
 			return err
 		}
 		if line == "" {
-			fmt.Fprint(term, line)
-			fmt.Fprint(logFile, lineLabel+line+"\n")
+			// fmt.Fprint(term, line)
+			// fmt.Fprint(logFile, lineLabel+line+"\n")
 			continue
 		}
 
@@ -349,7 +349,7 @@ func emulateCommand(v []byte, lineLabel string, kernelInfo string, term *term.Te
 		command += v
 	}
 
-	fmt.Fprint(logFile, lineLabel+string(v)+"\n")
+	fmt.Fprint(logFile, "$ "+string(v)+"\n")
 	msg := command
 	if commandName == "uname" {
 		if len(commandArgs) > 0 {
