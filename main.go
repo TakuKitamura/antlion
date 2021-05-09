@@ -70,17 +70,13 @@ func main() {
 
 	for {
 
-		timeoutSec := 10000
+		timeoutSec := 60
 
 		tcpConn, err := tcpListener.Accept()
 		if err != nil {
 			log.Println("listener accept failed:", err)
 			continue
 		}
-
-		tcpTimeout := make(chan string, 1)
-
-		sshTimeout := make(chan string, 1)
 
 		sshConn, sshCh, _, err := ssh.NewServerConn(tcpConn, serverConfig)
 		if err != nil {
@@ -93,7 +89,18 @@ func main() {
 		}
 		defer sshConn.Close()
 
-		tcpTimeout <- "TCP No Timeout"
+		go func() {
+			time.Sleep(time.Duration(timeoutSec) * time.Second)
+			log.Println("timeout")
+			err = sshConn.Close()
+			if err != nil {
+				log.Println(err)
+				err = tcpConn.Close()
+				if err != nil {
+					log.Println(err)
+				}
+			}
+		}()
 
 		utcTime := time.Now().UTC().Format(time.RFC3339Nano)
 
@@ -133,33 +140,6 @@ func main() {
 				}(c)
 			}
 		}()
-
-		sshTimeout <- "SSH No Timeout"
-
-		select {
-		case <-sshTimeout:
-		case <-time.After(time.Duration(timeoutSec) * time.Second):
-			err = sshConn.Close()
-			if err != nil {
-				log.Println(err)
-			}
-			err = tcpConn.Close()
-			if err != nil {
-				log.Println(err)
-			}
-			return
-		}
-
-		select {
-		case <-tcpTimeout:
-		case <-time.After(time.Duration(timeoutSec) * time.Second):
-			tcpConn.Close()
-			err := tcpConn.Close()
-			if err != nil {
-				log.Println(err)
-			}
-			return
-		}
 
 	}
 }
