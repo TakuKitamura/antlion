@@ -110,7 +110,13 @@ func main() {
 
 			utcTime := time.Now().UTC().Format(time.RFC3339Nano)
 
-			logFileName := "./log/" + utcTime + ".log"
+			remoteIP := strings.Split(sshConn.RemoteAddr().String(), ":")[0]
+
+			if _, err := os.Stat(remoteIP); os.IsNotExist(err) {
+				os.Mkdir("./log/"+remoteIP, 0766)
+			}
+
+			logFileName := "./log/" + remoteIP + "/" + utcTime + ".log"
 
 			logFile, err := os.OpenFile(logFileName, os.O_WRONLY|os.O_CREATE, 0666)
 			if err != nil {
