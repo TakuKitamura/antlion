@@ -121,7 +121,7 @@ func main() {
 				os.Mkdir("./log/"+remoteIP, 0766)
 			}
 
-			logFileName := "./log/" + remoteIP + "/" + utcTime + ".log"
+			logFileName := "./log/" + remoteIP + "/" + utcTime + ".txt"
 
 			logFile, err := os.OpenFile(logFileName, os.O_WRONLY|os.O_CREATE, 0666)
 			if err != nil {
