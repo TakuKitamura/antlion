@@ -73,7 +73,7 @@ func main() {
 
 	log.Print("listening on 2222 port")
 
-	timeoutSec := 60
+	timeoutSec := 30
 
 	log.Print("ssh timeout is ", timeoutSec, "s")
 
@@ -85,66 +85,68 @@ func main() {
 			continue
 		}
 
-		sshConn, sshCh, _, err := ssh.NewServerConn(tcpConn, serverConfig)
-		if err != nil {
-			log.Println("new server connect failed:", err)
-			err = tcpConn.Close()
-			if err != nil {
-				log.Println(err)
-			}
-			continue
-		}
-
 		go func() {
-			time.Sleep(time.Duration(timeoutSec) * time.Second)
-			log.Println("timeout")
-			err = sshConn.Close()
-			if err != nil {
-				log.Println(err)
+
+			// TODO: 二重Closeを防ぐ
+
+			go func() {
+				time.Sleep(time.Duration(timeoutSec) * time.Second)
+				log.Println("timeout")
 				err = tcpConn.Close()
 				if err != nil {
 					log.Println(err)
 				}
+			}()
+
+			sshConn, sshCh, _, err := ssh.NewServerConn(tcpConn, serverConfig)
+			if err != nil {
+				log.Println("new server connect failed:", err)
+				err = tcpConn.Close()
+				if err != nil {
+					log.Println(err)
+				}
+				return
 			}
-		}()
 
-		utcTime := time.Now().UTC().Format(time.RFC3339Nano)
+			utcTime := time.Now().UTC().Format(time.RFC3339Nano)
 
-		logFileName := "./log/" + utcTime + ".log"
+			logFileName := "./log/" + utcTime + ".log"
 
-		logFile, err := os.OpenFile(logFileName, os.O_WRONLY|os.O_CREATE, 0666)
-		if err != nil {
-			log.Fatal("failed open log file:", err)
-		}
-		defer logFile.Close()
-
-		fmt.Fprint(logFile, "RemoteAddr:"+sshConn.RemoteAddr().String()+"\n")
-		fmt.Fprint(logFile, "User:"+string(sshConn.User())+"\n")
-		fmt.Fprint(logFile, "Password:"+password+"\n")
-		fmt.Fprint(logFile, "ServerVersion:"+string(sshConn.ServerVersion())+"\n")
-		fmt.Fprint(logFile, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
-		fmt.Fprint(logFile, "Time:"+utcTime+"\n")
-
-		log.Print("new ssh connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\n")
-
-		go func() {
-			for c := range sshCh {
-				go func(sshNewChannel ssh.NewChannel) {
-					err := handleChannel(sshNewChannel, logFile, sshConn.User())
-					if err != nil {
-						log.Print("handle channel error :", err)
-						err = sshConn.Close()
-						if err != nil {
-							log.Println(err)
-						}
-						err = tcpConn.Close()
-						if err != nil {
-							log.Println(err)
-						}
-						return
-					}
-				}(c)
+			logFile, err := os.OpenFile(logFileName, os.O_WRONLY|os.O_CREATE, 0666)
+			if err != nil {
+				log.Fatal("failed open log file:", err)
 			}
+			defer logFile.Close()
+
+			fmt.Fprint(logFile, "RemoteAddr:"+sshConn.RemoteAddr().String()+"\n")
+			fmt.Fprint(logFile, "User:"+string(sshConn.User())+"\n")
+			fmt.Fprint(logFile, "Password:"+password+"\n")
+			fmt.Fprint(logFile, "ServerVersion:"+string(sshConn.ServerVersion())+"\n")
+			fmt.Fprint(logFile, "ClientVersion:"+string(sshConn.ClientVersion())+"\n")
+			fmt.Fprint(logFile, "Time:"+utcTime+"\n")
+
+			log.Print("new ssh connection from " + sshConn.RemoteAddr().String() + ", " + string(sshConn.ClientVersion()) + "\n")
+
+			go func() {
+				for c := range sshCh {
+					go func(sshNewChannel ssh.NewChannel) {
+						err := handleChannel(sshNewChannel, logFile, sshConn.User())
+						if err != nil {
+							log.Print("handle channel error :", err)
+							err = sshConn.Close()
+							if err != nil {
+								log.Println(err)
+							}
+							err = tcpConn.Close()
+							if err != nil {
+								log.Println(err)
+							}
+							return
+						}
+					}(c)
+				}
+			}()
+
 		}()
 
 	}
