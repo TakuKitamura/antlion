@@ -77,7 +77,7 @@ func main() {
 
 	log.Print("ssh timeout is ", timeoutSec, "s")
 
-	commandList, err := os.OpenFile("./log/commands.txt", os.O_WRONLY|os.O_CREATE, 0666)
+	commandList, err := os.OpenFile("./log/commands.txt", os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal("failed open log file:", err)
 	}
