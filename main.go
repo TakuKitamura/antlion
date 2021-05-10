@@ -15,7 +15,6 @@ import (
 	"unicode"
 
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/term"
 )
 
 const (
@@ -273,7 +272,8 @@ func handleChannel(sshNewChannel ssh.NewChannel, logFile *os.File, commandList *
 }
 
 func handleShell(c ssh.Channel, logFile *os.File, commandList *os.File, userName string, kernelInfo string) error {
-	term := term.NewTerminal(c, "")
+
+	term := NewTerminal(c, "", "SSH")
 	lineLabel := userName + "@" + kernelInfo + ":~$ "
 
 	term.SetPrompt(lineLabel + string(term.Escape.Reset))
@@ -330,7 +330,7 @@ func handleShell(c ssh.Channel, logFile *os.File, commandList *os.File, userName
 	}
 }
 
-func emulateCommand(v []byte, lineLabel string, kernelInfo string, term *term.Terminal, logFile *os.File, commandList *os.File) error {
+func emulateCommand(v []byte, lineLabel string, kernelInfo string, term *Terminal, logFile *os.File, commandList *os.File) error {
 	v = bytes.TrimFunc(v, unicode.IsControl)
 	splitPayload := bytes.Split(v, []byte{32})
 
@@ -417,7 +417,7 @@ func emulateCommand(v []byte, lineLabel string, kernelInfo string, term *term.Te
 }
 
 func handleExec(c ssh.Channel, r *ssh.Request, logFile *os.File, commandList *os.File, userName string, kernelInfo string) error {
-	term := term.NewTerminal(c, "")
+	term := NewTerminal(c, "", "SSH")
 
 	lineLabel := userName + "@" + kernelInfo + ":~$ "
 
