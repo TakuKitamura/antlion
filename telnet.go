@@ -1,5 +1,25 @@
 package main
 
+// Copyright (c) 2016 Charles Iliya Krempeaux <charles@reptile.ca> :: http://changelog.ca/
+
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
 import (
 	"bufio"
 	"bytes"
@@ -7,8 +27,6 @@ import (
 	"io"
 	"log"
 	"net"
-
-	"golang.org/x/term"
 )
 
 type Context interface {
@@ -46,46 +64,6 @@ func LongWrite(w io.Writer, p []byte) (int64, error) {
 
 	return numWritten, nil
 }
-
-// func ServeTELNET(term *term.Terminal) {
-
-// 	for {
-// 		// fmt.Println(999)
-// 		line, _ := term.ReadLine()
-// 		fmt.Println(line)
-// 		// if err == io.EOF {
-// 		// 	fmt.Print("read eof", "\n")
-// 		// 	// return nil
-// 		// }
-// 		// if err != nil {
-// 		// 	fmt.Print("read line failed:", err.Error()+"\n")
-// 		// 	// return err
-// 		// }
-// 		// if line == "" {
-// 		// 	fmt.Fprint(term, line, 123)
-// 		// 	// fmt.Fprint(logFile, lineLabel+line+"\n")
-// 		// 	continue
-// 		// }
-// 	}
-
-// var buffer [1]byte // Seems like the length of the buffer needs to be small, otherwise will have to wait for buffer to fill up.
-// p := buffer[:]
-
-// for {
-// 	n, err := r.Read(p)
-
-// 	// fmt.Println(string(p), n)
-
-// 	if n > 0 {
-// 		fmt.Println(p, n)
-// 		LongWrite(term, p[:n])
-// 	}
-
-// 	if nil != err {
-// 		break
-// 	}
-// }
-// }
 
 type internalDataWriter struct {
 	wrapped io.Writer
@@ -275,70 +253,10 @@ func (r *internalDataReader) Read(data []byte) (n int, err error) {
 	return n, nil
 }
 
-func ServeTELNET(term *term.Terminal) {
-
-	for {
-		// fmt.Println(999)
-		x, err := term.ReadLine()
-		// term.Write([]byte("ok!\n"))
-		fmt.Println(x, err)
-		// term.Write([]byte(line + "XXX"))
-
-	}
-}
-
-func handle(c net.Conn) {
-	defer c.Close()
-
-	// var w Writer = newDataWriter(c)
-	// var r Reader = newDataReader(c)
-
-	rw := bufio.NewReadWriter(bufio.NewReader(c), bufio.NewWriter(c))
-
-	// var x = abc{}
-
-	term := term.NewTerminal(rw, "")
-
-	// lineLabel := "> "
-
-	// term.SetPrompt(lineLabel + string(term.Escape.Reset))
-
-	// fmt.Fprint(term, "Hello!\n")
-
-	ServeTELNET(term)
-	c.Close()
-}
-
 type ReadWriter struct {
 	io.Reader
 	io.Writer
 }
-
-// NewReadWriter allocates a new ReadWriter that dispatches to r and w.
-func NewReadWriter(r io.Reader, w io.Writer) *ReadWriter {
-	return &ReadWriter{r, w}
-}
-
-type terminal struct {
-	write  *bufio.Writer
-	reader *bufio.Reader
-}
-
-type RR interface {
-	Read(p []byte) (n int, err error)
-}
-
-// type internalDataWriter struct {
-// 	wrapped io.Writer
-// }
-
-// func newDataWriter(w io.Writer) *internalDataWriter {
-// 	writer := internalDataWriter{
-// 		wrapped: w,
-// 	}
-
-// 	return &writer
-// }
 
 func main() {
 	tcpListener, err := net.Listen("tcp", "0.0.0.0:23")
