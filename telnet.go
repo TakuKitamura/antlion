@@ -259,7 +259,7 @@ type ReadWriter struct {
 }
 
 func main() {
-	tcpListener, err := net.Listen("tcp", "0.0.0.0:23")
+	tcpListener, err := net.Listen("tcp", "localhost:23")
 	if err != nil {
 		log.Fatalf("failed to listen on 23 (%s)", err)
 	}
@@ -271,7 +271,7 @@ func main() {
 	conn.Write([]byte{0xFF, 0xFD, 0x18, 0xFF, 0xFD, 0x20, 0xFF, 0xFD, 0x23, 0xFF, 0xFD, 0x27})
 	// conn.Write([]byte{0x6c, 0x6f, 0x67, 0x69, 0x6e, 0x3a, 0x20})
 	// conn.Write([]byte{0x50, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x3a})
-	// conn.Write([]byte("\r\n"))
+	// conn.Write([]byte("\r\r\n"))
 
 	r := newDataReader(conn)
 	w := newDataWriter(conn)
@@ -281,12 +281,10 @@ func main() {
 	commandBuff := []byte{}
 
 	w.Write([]byte("login: "))
-	w.Write([]byte("\n"))
-	w.Write([]byte("password: "))
-	w.Write([]byte("\n"))
-	w.Write([]byte("> "))
 
 	lfCount := 0
+
+	commandCount := 0
 
 	for {
 
@@ -299,8 +297,6 @@ func main() {
 		readOneByte := readBuff[0]
 
 		if readOneByte == 0x0d {
-
-			fmt.Println(commandBuff, readBuff)
 
 			if len(commandBuff) == 0 { // lf の処理
 				lfCount += 1
@@ -317,12 +313,23 @@ func main() {
 			command := string(commandBuff)
 			commandBuff = []byte{}
 
-			w.Write([]byte(command + "\n"))
-			// w.Write([]byte("your command is " + command + "\n"))
-			if command == "exit" {
-				// break
+			commandCount += 1
+
+			if commandCount == 1 { // userID
+				fmt.Println("your id is ", command)
+				w.Write([]byte("password: "))
+			} else if commandCount == 2 { // password
+				fmt.Println("your password is", command)
+				w.Write([]byte("> "))
+			} else {
+				// w.Write([]byte(command + "\r\n"))
+				fmt.Println(">", command)
+				w.Write([]byte(command + "\r\n"))
+				if command == "exit" {
+					break
+				}
+				w.Write([]byte("> "))
 			}
-			w.Write([]byte("> "))
 		} else {
 			commandBuff = append(commandBuff, readOneByte)
 		}
