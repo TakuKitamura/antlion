@@ -265,78 +265,84 @@ func main() {
 	}
 	defer tcpListener.Close()
 
-	conn, _ := tcpListener.Accept()
-	defer conn.Close()
-
-	conn.Write([]byte{0xFF, 0xFD, 0x18, 0xFF, 0xFD, 0x20, 0xFF, 0xFD, 0x23, 0xFF, 0xFD, 0x27})
-	// conn.Write([]byte{0x6c, 0x6f, 0x67, 0x69, 0x6e, 0x3a, 0x20})
-	// conn.Write([]byte{0x50, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x3a})
-	// conn.Write([]byte("\r\r\n"))
-
-	r := newDataReader(conn)
-	w := newDataWriter(conn)
-
-	readBuff := []byte{0}
-
-	commandBuff := []byte{}
-
-	w.Write([]byte("login: "))
-
-	lfCount := 0
-
-	commandCount := 0
-
 	for {
 
-		_, err := r.Read(readBuff)
+		conn, _ := tcpListener.Accept()
+		defer conn.Close()
 
-		if readBuff[0] == 0x0a { // cr lf を lfの扱いに統一
-			readBuff[0] = 0x0d
-		}
+		go func() {
 
-		readOneByte := readBuff[0]
+			conn.Write([]byte{0xFF, 0xFD, 0x18, 0xFF, 0xFD, 0x20, 0xFF, 0xFD, 0x23, 0xFF, 0xFD, 0x27})
+			// conn.Write([]byte{0x6c, 0x6f, 0x67, 0x69, 0x6e, 0x3a, 0x20})
+			// conn.Write([]byte{0x50, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x3a})
+			// conn.Write([]byte("\r\r\n"))
 
-		if readOneByte == 0x0d {
+			r := newDataReader(conn)
+			w := newDataWriter(conn)
 
-			if len(commandBuff) == 0 { // lf の処理
-				lfCount += 1
-				if lfCount == 2 {
-					w.Write([]byte("> "))
-					lfCount = 0
+			readBuff := []byte{0}
+
+			commandBuff := []byte{}
+
+			w.Write([]byte("login: "))
+
+			lfCount := 0
+
+			commandCount := 0
+
+			for {
+
+				_, err := r.Read(readBuff)
+
+				if readBuff[0] == 0x0a { // cr lf を lfの扱いに統一
+					readBuff[0] = 0x0d
 				}
 
-				continue
-			}
+				readOneByte := readBuff[0]
 
-			lfCount = 0
+				if readOneByte == 0x0d {
 
-			command := string(commandBuff)
-			commandBuff = []byte{}
+					if len(commandBuff) == 0 { // lf の処理
+						lfCount += 1
+						if lfCount == 2 {
+							w.Write([]byte("> "))
+							lfCount = 0
+						}
 
-			commandCount += 1
+						continue
+					}
 
-			if commandCount == 1 { // userID
-				fmt.Println("your id is ", command)
-				w.Write([]byte("password: "))
-			} else if commandCount == 2 { // password
-				fmt.Println("your password is", command)
-				w.Write([]byte("> "))
-			} else {
-				// w.Write([]byte(command + "\r\n"))
-				fmt.Println(">", command)
-				w.Write([]byte(command + "\r\n"))
-				if command == "exit" {
+					lfCount = 0
+
+					command := string(commandBuff)
+					commandBuff = []byte{}
+
+					commandCount += 1
+
+					if commandCount == 1 { // userID
+						fmt.Println("your id is ", command)
+						w.Write([]byte("password: "))
+					} else if commandCount == 2 { // password
+						fmt.Println("your password is", command)
+						w.Write([]byte("> "))
+					} else {
+						// w.Write([]byte(command + "\r\n"))
+						fmt.Println(">", command)
+						w.Write([]byte(command + "\r\n"))
+						if command == "exit" {
+							conn.Close()
+							break
+						}
+						w.Write([]byte("> "))
+					}
+				} else {
+					commandBuff = append(commandBuff, readOneByte)
+				}
+
+				if nil != err {
 					break
 				}
-				w.Write([]byte("> "))
 			}
-		} else {
-			commandBuff = append(commandBuff, readOneByte)
-		}
-
-		if nil != err {
-			break
-		}
+		}()
 	}
-
 }
