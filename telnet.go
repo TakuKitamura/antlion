@@ -27,6 +27,9 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
+	"strings"
+	"time"
 )
 
 type Context interface {
@@ -113,7 +116,7 @@ func (w *internalDataWriter) write64(data []byte) (n int64, err error) {
 			numWritten, err = LongWrite(w.wrapped, iaciac)
 			if int64(len(iaciac)) != numWritten {
 				//@TODO: Do we really want to panic() here?
-				panic("errPartialIACIACWrite")
+				log.Print("errPartialIACIACWrite")
 			}
 			n += 1
 			if nil != err {
@@ -139,7 +142,7 @@ func (w *internalDataWriter) Write(data []byte) (n int, err error) {
 	n64, err = w.write64(data)
 	n = int(n64)
 	if int64(n) != n64 {
-		panic("errOverflow")
+		log.Print("errOverflow")
 	}
 
 	return n, err
@@ -259,26 +262,68 @@ type ReadWriter struct {
 }
 
 func main() {
-	tcpListener, err := net.Listen("tcp", "localhost:23")
+	tcpListener, err := net.Listen("tcp", "localhost:5555")
 	if err != nil {
-		log.Fatalf("failed to listen on 23 (%s)", err)
+		log.Fatalf("failed to listen on 5555 (%s)", err)
 	}
 	defer tcpListener.Close()
 
+	log.Print("listening on 2222 port")
+
+	if _, err := os.Stat("./telnet-log"); os.IsNotExist(err) {
+		os.Mkdir("./telnet-log", 0766)
+	}
+
+	timeoutSec := 30
+
+	log.Print("ssh timeout is ", timeoutSec, "s")
+
 	for {
 
-		conn, _ := tcpListener.Accept()
-		defer conn.Close()
+		telnetConn, err := tcpListener.Accept()
+		if err != nil {
+			log.Fatalf("failed to listen on 5555 (%s)", err)
+		}
+		defer telnetConn.Close()
 
 		go func() {
 
-			conn.Write([]byte{0xFF, 0xFD, 0x18, 0xFF, 0xFD, 0x20, 0xFF, 0xFD, 0x23, 0xFF, 0xFD, 0x27})
-			// conn.Write([]byte{0x6c, 0x6f, 0x67, 0x69, 0x6e, 0x3a, 0x20})
-			// conn.Write([]byte{0x50, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x3a})
-			// conn.Write([]byte("\r\r\n"))
+			go func() {
+				time.Sleep(time.Duration(timeoutSec) * time.Second)
+				log.Println("timeout")
+				err = telnetConn.Close()
+				if err != nil {
+					log.Println(err)
+				}
+			}()
 
-			r := newDataReader(conn)
-			w := newDataWriter(conn)
+			utcTime := time.Now().UTC().Format(time.RFC3339Nano)
+
+			remoteIP := strings.Split(telnetConn.RemoteAddr().String(), ":")[0]
+
+			if _, err := os.Stat(remoteIP); os.IsNotExist(err) {
+				os.Mkdir("./telnet-log/"+remoteIP, 0766)
+			}
+
+			logFileName := "./telnet-log/" + remoteIP + "/" + utcTime + ".txt"
+
+			logFile, err := os.OpenFile(logFileName, os.O_WRONLY|os.O_CREATE, 0666)
+			if err != nil {
+				log.Fatal("failed open log file:", err)
+			}
+			log.Print("new ssh connection from " + telnetConn.RemoteAddr().String() + "\n")
+			fmt.Fprint(logFile, "RemoteAddr:"+telnetConn.RemoteAddr().String()+"\n")
+			fmt.Fprint(logFile, "Time:"+utcTime+"\n")
+
+			fmt.Fprint(logFile, "RequestTyped:Shell"+"\n-----\n")
+
+			telnetConn.Write([]byte{0xFF, 0xFD, 0x18, 0xFF, 0xFD, 0x20, 0xFF, 0xFD, 0x23, 0xFF, 0xFD, 0x27})
+			telnetConn.Write([]byte{0x6c, 0x6f, 0x67, 0x69, 0x6e, 0x3a, 0x20})
+			telnetConn.Write([]byte{0x50, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x3a})
+			// telnetConn.Write([]byte("\r\r\n"))
+
+			r := newDataReader(telnetConn)
+			w := newDataWriter(telnetConn)
 
 			readBuff := []byte{0}
 
@@ -293,6 +338,10 @@ func main() {
 			for {
 
 				_, err := r.Read(readBuff)
+				if nil != err {
+					log.Print(err)
+					break
+				}
 
 				if readBuff[0] == 0x0a { // cr lf を lfの扱いに統一
 					readBuff[0] = 0x0d
@@ -320,27 +369,29 @@ func main() {
 					commandCount += 1
 
 					if commandCount == 1 { // userID
-						fmt.Println("your id is ", command)
+						fmt.Println("your user is", command)
+						fmt.Fprint(logFile, "User:"+command+"\n")
+
 						w.Write([]byte("password: "))
 					} else if commandCount == 2 { // password
 						fmt.Println("your password is", command)
+						fmt.Fprint(logFile, "Password:"+command+"\n")
+
 						w.Write([]byte("> "))
 					} else {
 						// w.Write([]byte(command + "\r\n"))
 						fmt.Println(">", command)
 						w.Write([]byte(command + "\r\n"))
+
+						fmt.Fprint(logFile, "$ "+string(command)+"\n")
 						if command == "exit" {
-							conn.Close()
+							telnetConn.Close()
 							break
 						}
 						w.Write([]byte("> "))
 					}
 				} else {
 					commandBuff = append(commandBuff, readOneByte)
-				}
-
-				if nil != err {
-					break
 				}
 			}
 		}()
