@@ -262,13 +262,13 @@ type ReadWriter struct {
 }
 
 func main() {
-	tcpListener, err := net.Listen("tcp", "localhost:5555")
+	tcpListener, err := net.Listen("tcp", "0.0.0.0:5555")
 	if err != nil {
 		log.Fatalf("failed to listen on 5555 (%s)", err)
 	}
 	defer tcpListener.Close()
 
-	log.Print("listening on 2222 port")
+	log.Print("listening on 5555 port")
 
 	if _, err := os.Stat("./telnet-log"); os.IsNotExist(err) {
 		os.Mkdir("./telnet-log", 0766)
@@ -318,8 +318,8 @@ func main() {
 			fmt.Fprint(logFile, "RequestTyped:Shell"+"\n-----\n")
 
 			telnetConn.Write([]byte{0xFF, 0xFD, 0x18, 0xFF, 0xFD, 0x20, 0xFF, 0xFD, 0x23, 0xFF, 0xFD, 0x27})
-			telnetConn.Write([]byte{0x6c, 0x6f, 0x67, 0x69, 0x6e, 0x3a, 0x20})
-			telnetConn.Write([]byte{0x50, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x3a})
+			// telnetConn.Write([]byte{0x6c, 0x6f, 0x67, 0x69, 0x6e, 0x3a, 0x20})
+			// telnetConn.Write([]byte{0x50, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x3a})
 			// telnetConn.Write([]byte("\r\r\n"))
 
 			r := newDataReader(telnetConn)
