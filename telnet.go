@@ -315,8 +315,6 @@ func main() {
 			fmt.Fprint(logFile, "RemoteAddr:"+telnetConn.RemoteAddr().String()+"\n")
 			fmt.Fprint(logFile, "Time:"+utcTime+"\n")
 
-			fmt.Fprint(logFile, "RequestTyped:Shell"+"\n-----\n")
-
 			telnetConn.Write([]byte{0xFF, 0xFD, 0x18, 0xFF, 0xFD, 0x20, 0xFF, 0xFD, 0x23, 0xFF, 0xFD, 0x27})
 			// telnetConn.Write([]byte{0x6c, 0x6f, 0x67, 0x69, 0x6e, 0x3a, 0x20})
 			// telnetConn.Write([]byte{0x50, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x3a})
@@ -376,6 +374,7 @@ func main() {
 					} else if commandCount == 2 { // password
 						fmt.Println("your password is", command)
 						fmt.Fprint(logFile, "Password:"+command+"\n")
+						fmt.Fprint(logFile, "RequestTyped:Shell"+"\n-----\n")
 
 						w.Write([]byte("> "))
 					} else {
