@@ -1,7 +1,7 @@
 package main
 
 import (
-	"antlion/proto"
+	"antlion/app/proto"
 	"sync"
 )
 
