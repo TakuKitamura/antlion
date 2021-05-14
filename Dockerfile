@@ -1,4 +1,7 @@
-FROM golang:latest
+# FROM arm32v6/golang:1.15-alpine
+# golang:latest
+ARG IMAGE=arm32v6/golang:1.15-alpine
+FROM $IMAGE
 
 WORKDIR /go/src/app
 COPY . .
