@@ -1,4 +1,4 @@
-package main
+package proto
 
 // Copyright (c) 2016 Charles Iliya Krempeaux <charles@reptile.ca> :: http://changelog.ca/
 
@@ -261,7 +261,7 @@ type ReadWriter struct {
 	io.Writer
 }
 
-func main() {
+func StartTelnetServer() {
 	tcpListener, err := net.Listen("tcp", "0.0.0.0:5555")
 	if err != nil {
 		log.Fatalf("failed to listen on 5555 (%s)", err)

@@ -1,4 +1,4 @@
-package main
+package proto
 
 import (
 	"bytes"
@@ -27,7 +27,7 @@ const (
 	Debian      = "Debian"
 )
 
-func main() {
+func StartSshSerer() {
 	password := ""
 
 	serverConfig := &ssh.ServerConfig{
